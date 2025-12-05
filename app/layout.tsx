@@ -28,6 +28,9 @@ export default function RootLayout({
         className={`${geistSans.variable} ${geistMono.variable} antialiased`}
       >
         {children}
+        <footer className="py-6 text-center text-sm text-slate-400 bg-slate-50 border-t border-slate-100">
+          &copy; Silotech 2025
+        </footer>
       </body>
     </html>
   );
