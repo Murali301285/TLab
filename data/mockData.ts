@@ -172,48 +172,58 @@ graph TD
     }
 ];
 
+export interface Role {
+    id: string;
+    name: string;
+    description: string;
+    canManageOthers: boolean;
+    permissions: string[];
+}
+
+export const ROLES: Role[] = [
+    {
+        id: 'admin',
+        name: 'Admin',
+        description: 'Full system access',
+        canManageOthers: true,
+        permissions: ['all']
+    },
+    {
+        id: 'hr',
+        name: 'HR',
+        description: 'Manage users and policies',
+        canManageOthers: false, // In this model, HR manages policies, distinct from "Team Manager"
+        permissions: ['view_all_users', 'manage_onboarding']
+    },
+    {
+        id: 'manager',
+        name: 'Manager',
+        description: 'Manage team and assignments',
+        canManageOthers: true,
+        permissions: ['view_team', 'assign_courses']
+    },
+    {
+        id: 'employee',
+        name: 'Employee',
+        description: 'Regular user access',
+        canManageOthers: false,
+        permissions: ['view_own_profile']
+    }
+];
+
 export interface User {
     id: string;
     name: string;
     email: string;
-    role: 'admin' | 'manager' | 'employee';
+    role: string; // references Role.id
     department: string;
     status: 'active' | 'inactive';
+    managerId?: string; // ID of the user they report to
     assignedCourses: string[]; // Course IDs
     libraryItems: string[]; // Book IDs
 }
 
 export const USERS: User[] = [
-    {
-        id: 'u1',
-        name: 'Alice Johnson',
-        email: 'alice@tlab.com',
-        role: 'manager',
-        department: 'Sales',
-        status: 'active',
-        assignedCourses: ['c1'],
-        libraryItems: ['b1']
-    },
-    {
-        id: 'u2',
-        name: 'Bob Smith',
-        email: 'bob@tlab.com',
-        role: 'employee',
-        department: 'Engineering',
-        status: 'active',
-        assignedCourses: ['c2'],
-        libraryItems: ['b3']
-    },
-    {
-        id: 'u3',
-        name: 'Charlie Brown',
-        email: 'charlie@tlab.com',
-        role: 'employee',
-        department: 'HR',
-        status: 'inactive',
-        assignedCourses: [],
-        libraryItems: []
-    },
     {
         id: 'u4',
         name: 'Diana Prince',
@@ -223,6 +233,61 @@ export const USERS: User[] = [
         status: 'active',
         assignedCourses: ['c1', 'c2', 'c3'],
         libraryItems: ['b1', 'b2', 'b4']
+    },
+    {
+        id: 'u1',
+        name: 'Alice Johnson',
+        email: 'alice@tlab.com',
+        role: 'manager',
+        department: 'Sales',
+        status: 'active',
+        managerId: 'u4', // Reports to Diana
+        assignedCourses: ['c1'],
+        libraryItems: ['b1']
+    },
+    {
+        id: 'u2',
+        name: 'Bob Smith',
+        email: 'bob@tlab.com',
+        role: 'employee',
+        department: 'Sales',
+        status: 'active',
+        managerId: 'u1', // Reports to Alice
+        assignedCourses: ['c2'],
+        libraryItems: ['b3']
+    },
+    {
+        id: 'u3',
+        name: 'Charlie Brown',
+        email: 'charlie@tlab.com',
+        role: 'employee',
+        department: 'Sales', // Changed to Sales to group with Alice for demo
+        status: 'inactive',
+        managerId: 'u1', // Reports to Alice
+        assignedCourses: [],
+        libraryItems: []
+    },
+    {
+        id: 'u5',
+        name: 'Eve Polastri',
+        email: 'eve@tlab.com',
+        role: 'manager',
+        department: 'Engineering',
+        status: 'active',
+        managerId: 'u4', // Reports to Diana
+        assignedCourses: ['c2', 'c3'],
+        libraryItems: ['b3']
+    },
+    {
+        id: 'u6',
+        name: 'Frank Castle',
+        email: 'frank@tlab.com',
+        role: 'employee',
+        department: 'Engineering',
+        status: 'active',
+        managerId: 'u5', // Reports to Eve
+        assignedCourses: ['c2'],
+        libraryItems: []
     }
 ];
 

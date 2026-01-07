@@ -1,96 +1,176 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { GoogleGenerativeAI } from '@google/generative-ai';
+import { Groq } from 'groq-sdk';
+import { PrismaClient } from '@prisma/client';
 
 export async function POST(req: NextRequest) {
     try {
-        const { type, context, topicTitle } = await req.json();
-        const apiKey = process.env.GEMINI_API_KEY;
+        const body = await req.json();
+        const { type, topicId, courseId, context, topicTitle } = body; // context/topicTitle might be passed for ad-hoc requests
 
-        // Fallback content if no API key or error
-        const fallbackContent = generateFallback(type, topicTitle);
-
+        const apiKey = process.env.GROQ_API_KEY;
         if (!apiKey) {
-            console.log("No API key found, using fallback for", type);
-            return NextResponse.json({ content: fallbackContent });
+            return NextResponse.json({ content: generateFallback(type, topicTitle || "Topic") });
         }
 
-        const genAI = new GoogleGenerativeAI(apiKey);
-        const model = genAI.getGenerativeModel({ model: "gemini-1.5-flash" });
+        const groq = new Groq({ apiKey });
+        const prisma = new PrismaClient();
 
-        let prompt = "";
+        // 1. Fetch Context from DB if topicId is provided
+        let sourceText = context || "";
+        let currentContent: any = {};
+        let topic;
+
+        if (topicId) {
+            topic = await prisma.topic.findUnique({
+                where: { id: topicId },
+                include: { chapter: true }
+            });
+            if (!topic) return NextResponse.json({ error: "Topic not found" }, { status: 404 });
+
+            // Parse existing content
+            try {
+                currentContent = topic.content ? JSON.parse(topic.content) : {};
+            } catch (e) {
+                // If it's a plain string, treat it as 'text'
+                currentContent = { text: topic.content };
+            }
+
+            // Check if we already have the requested content
+            if (type === 'smart_notes' && currentContent.text) {
+                return NextResponse.json({ content: currentContent.text });
+            }
+            if (type === 'quiz' && currentContent.quiz) {
+                return NextResponse.json({ content: currentContent.quiz });
+            }
+            if (type === 'flashcards' && currentContent.flashcards) {
+                return NextResponse.json({ content: currentContent.flashcards });
+            }
+            if (type === 'summary' && currentContent.summary) {
+                return NextResponse.json({ content: currentContent.summary });
+            }
+
+            // If we need to generate, fetch the Course Source Text
+            if (!sourceText) {
+                const course = await prisma.course.findUnique({
+                    where: { id: courseId || topic.chapter.courseId },
+                    select: { sourceText: true }
+                });
+                sourceText = course?.sourceText || "";
+            }
+        }
+
+        // Limit context size
+        const safeContext = sourceText.substring(0, 25000);
+        const titleInfo = topic ? `Topic: ${topic.title}` : `Topic: ${topicTitle}`;
+
+        // 2. Define System Prompts
+        let systemPrompt = "You are a helpful AI tutor.";
+        let userPrompt = `Context: ${safeContext}\n\n${titleInfo}`;
+
+        // Output format instruction
+        const jsonInstruction = `Return ONLY valid JSON. Do not include markdown formatting.`;
 
         switch (type) {
+            case 'smart_notes': // The main content view
+            case 'initial_content':
+                systemPrompt = `You are an expert professor. Create comprehensive, engaging "Smart Notes" for the provided topic based *strictly* on the context.
+                styles: Use HTML formatting (<h3>, <p>, <ul>, <li>, <strong>).
+                Structure:
+                - Introduction
+                - Key Concepts (Bullet points)
+                - Detailed Analysis
+                - Real-world Application
+                Include emoji where appropriate to make it fun.
+                Return ONLY the HTML string.`;
+                userPrompt = `Context: ${safeContext}\n\nWrite Smart Notes for: ${topic?.title || topicTitle}`;
+                break;
+
             case 'summary':
-                prompt = `
-          You are an expert tutor. Create a concise, easy-to-understand summary of the following content about "${topicTitle}".
-          Focus on the key takeaways. Use bullet points where appropriate.
-          
-          Content:
-          ${context.substring(0, 10000)}
-        `;
+                systemPrompt = `You are an expert tutor. Create a concise summary.`;
                 break;
 
             case 'quiz':
-                prompt = `
-          Create a short multiple-choice quiz (3 questions) based on the following content about "${topicTitle}".
-          Return ONLY valid JSON in this format:
-          [
-            {
-              "question": "Question text?",
-              "options": ["Option A", "Option B", "Option C", "Option D"],
-              "correctAnswer": 0 // Index of correct option
-            }
-          ]
+                systemPrompt = `Create a multiple-choice quiz (3 questions).
+                Format: [{"question": "...", "options": ["..."], "correctAnswer": 0}]
+                ${jsonInstruction}`;
+                break;
 
-          Content:
-          ${context.substring(0, 10000)}
-        `;
+            case 'flashcards':
+                systemPrompt = `Create 5 flashcards.
+                Format: [{"front": "...", "back": "..."}]
+                ${jsonInstruction}`;
                 break;
 
             case 'mindmap':
-                prompt = `
-          Create a Mermaid.js mindmap syntax for the following content about "${topicTitle}".
-          Start with "mindmap" and indent correctly. Do not include markdown code blocks.
-          
-          Example format:
-          mindmap
-            root((Main Topic))
-              Subtopic 1
-                Detail A
-                Detail B
-              Subtopic 2
-          
-          Content:
-          ${context.substring(0, 10000)}
-        `;
+                systemPrompt = `You are a Mermaid.js expert. Create a mindmap for the topic.
+                Return ONLY the raw Mermaid syntax starting with 'mindmap'.
+                Do not include markdown code blocks (\`\`\`mermaid) or conversational text.
+                Do not use special characters in node labels.`;
                 break;
 
-            case 'qa':
-                prompt = `
-          You are a helpful AI assistant. Answer the user's question based strictly on the provided context.
-          
-          Context:
-          ${context.substring(0, 10000)}
-          
-          User Question: ${topicTitle} // Reusing topicTitle field for the question
-        `;
+            case 'explain':
+                systemPrompt = `Explain the selected term clearly in 2 sentences.`;
+                userPrompt = `Context: ${safeContext}\n\nExplain term: ${topicTitle}`;
                 break;
         }
 
-        const result = await model.generateContent(prompt);
-        const response = await result.response;
-        let text = response.text();
+        // 3. Call Groq
+        const completion = await groq.chat.completions.create({
+            messages: [
+                { role: "system", content: systemPrompt },
+                { role: "user", content: userPrompt }
+            ],
+            model: "llama-3.3-70b-versatile",
+            temperature: 0.3,
+            max_tokens: 2048,
+        });
 
-        // Clean up JSON for quiz
-        if (type === 'quiz') {
-            text = text.replace(/```json/g, '').replace(/```/g, '').trim();
-        }
-        // Clean up Mermaid for mindmap
-        if (type === 'mindmap') {
-            text = text.replace(/```mermaid/g, '').replace(/```/g, '').trim();
+        let generatedContent = completion.choices[0]?.message?.content || "";
+
+        // 4. Save to DB (Persistent Caching)
+        if (topicId && type !== 'explain') { // Don't save ad-hoc explanations
+            let updateData: any = {};
+
+            // Clean JSON if needed
+            if (type === 'quiz' || type === 'flashcards') {
+                generatedContent = generatedContent.replace(/```json/g, '').replace(/```/g, '').trim();
+                try {
+                    updateData[type] = JSON.parse(generatedContent);
+                } catch (e) { console.error("JSON Parse Error", e); }
+            } else if (type === 'smart_notes' || type === 'initial_content') {
+                updateData['text'] = generatedContent;
+            } else if (type === 'summary') {
+                updateData['summary'] = generatedContent;
+            } else if (type === 'mindmap') {
+                // Aggressive cleanup: Find the start of 'mindmap' and ignore usage of fences
+                const match = generatedContent.match(/mindmap[\s\S]*/);
+                if (match) {
+                    generatedContent = match[0].replace(/```/g, '').trim();
+                } else {
+                    generatedContent = generatedContent.replace(/```mermaid/g, '').replace(/```/g, '').trim();
+                }
+                updateData['mindMap'] = generatedContent;
+            }
+
+            // Merge with existing content
+            const newContentObj = { ...currentContent, ...updateData };
+
+            await prisma.topic.update({
+                where: { id: topicId },
+                data: { content: JSON.stringify(newContentObj) }
+            });
         }
 
-        return NextResponse.json({ content: text });
+        // Check if we need to return parsed JSON or string
+        if ((type === 'quiz' || type === 'flashcards') && typeof generatedContent === 'string') {
+            try {
+                return NextResponse.json({ content: JSON.parse(generatedContent) });
+            } catch (e) {
+                return NextResponse.json({ content: generatedContent });
+            }
+        }
+
+        return NextResponse.json({ content: generatedContent });
 
     } catch (error) {
         console.error('AI Generation error:', error);
@@ -101,7 +181,7 @@ export async function POST(req: NextRequest) {
 function generateFallback(type: string, title: string) {
     switch (type) {
         case 'summary':
-            return `(AI Unavailable) This is a placeholder summary for ${title}. Please configure the Gemini API key to generate real summaries.`;
+            return `(Groq Unavailable) This is a placeholder summary for ${title}. Please configure the Groq API key.`;
         case 'quiz':
             return JSON.stringify([
                 {
@@ -118,6 +198,14 @@ function generateFallback(type: string, title: string) {
             Concept B
             Concept C
       `;
+        case 'flashcards':
+            return JSON.stringify([
+                { front: "BATNA", back: "Best Alternative to a Negotiated Agreement" },
+                { front: "ZOPA", back: "Zone of Possible Agreement" },
+                { front: "Reservation Price", back: "The least favorable point at which one will accept a deal" }
+            ]);
+        case 'explain':
+            return `(Demo Explanation) **${title}** is a key concept. (Groq API unavailable).`;
         default:
             return "Content unavailable.";
     }

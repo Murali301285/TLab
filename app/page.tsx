@@ -1,97 +1,122 @@
 'use client';
 
-import Image from 'next/image';
-import Link from 'next/link';
 import { useState } from 'react';
+import Image from 'next/image';
 import { useRouter } from 'next/navigation';
-import { Lock, Mail, ArrowRight, Loader2 } from 'lucide-react';
+import { useAuth } from '@/components/AuthProvider';
+import { Loader2, AlertCircle, Eye, EyeOff } from 'lucide-react';
 
 export default function LoginPage() {
-  const router = useRouter();
+  const [email, setEmail] = useState('');
+  const [password, setPassword] = useState('');
+  const [showPassword, setShowPassword] = useState(false);
+  const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
 
-  const handleLogin = (e: React.FormEvent) => {
+  const router = useRouter();
+  const { login } = useAuth();
+
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    setError('');
     setLoading(true);
-    // Simulate login delay
-    setTimeout(() => {
+
+    try {
+      const res = await fetch('/api/auth/login', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email, password }),
+      });
+
+      const data = await res.json();
+
+      if (!res.ok) {
+        throw new Error(data.error || 'Something went wrong');
+      }
+
+      login(''); // Trigger state update
       router.push('/dashboard');
-    }, 1500);
+
+    } catch (err: any) {
+      setError(err.message);
+    } finally {
+      setLoading(false);
+    }
   };
 
   return (
     <main className="min-h-screen flex items-center justify-center relative overflow-hidden bg-slate-50">
-      {/* Background Elements */}
+      {/* Background */}
       <div className="absolute top-0 left-0 w-full h-full z-0 overflow-hidden">
         <div className="absolute top-[-10%] left-[-10%] w-[500px] h-[500px] bg-blue-100/50 rounded-full blur-[100px]" />
         <div className="absolute bottom-[-10%] right-[-10%] w-[500px] h-[500px] bg-cyan-100/50 rounded-full blur-[100px]" />
       </div>
 
       <div className="w-full max-w-md p-8 relative z-10">
-        <div className="glass-card rounded-2xl p-8 shadow-xl bg-white/80">
-          <div className="flex flex-col items-center mb-8">
-            <div className="w-24 h-24 relative mb-4">
-              <Image
-                src="/assets/logo.png"
-                alt="T-Lab Logo"
-                fill
-                className="object-contain drop-shadow-md"
-              />
+        <div className="bg-white rounded-2xl shadow-xl overflow-hidden border border-slate-100">
+          {/* Header */}
+          <div className="bg-slate-900 p-8 flex flex-col items-center">
+            <div className="w-20 h-20 relative mb-4 p-2 bg-white/5 rounded-full backdrop-blur-sm">
+              <Image src="/assets/logo.png" alt="T-Lab" fill className="object-contain" />
             </div>
-            <h1 className="text-2xl font-bold text-slate-900 tracking-tight">Welcome Back</h1>
-            <p className="text-slate-500 text-sm mt-2">Enter your credentials to access T-Lab</p>
+            <h1 className="text-2xl font-bold text-white tracking-tight">
+              Welcome Back
+            </h1>
+            <p className="text-slate-400 text-sm mt-2">
+              Enter your credentials to access T-Lab
+            </p>
           </div>
 
-          <form onSubmit={handleLogin} className="space-y-6">
-            <div className="space-y-2">
-              <label className="text-xs font-medium text-slate-500 uppercase tracking-wider">Username</label>
-              <div className="relative group">
-                <Mail className="absolute left-3 top-3 h-5 w-5 text-slate-400 group-focus-within:text-cyan-600 transition-colors" />
+          {/* Form */}
+          <div className="p-8">
+            {error && (
+              <div className="bg-red-50 text-red-600 p-3 rounded-lg text-sm mb-4 flex items-center gap-2">
+                <AlertCircle className="h-4 w-4" /> {error}
+              </div>
+            )}
+
+            <form onSubmit={handleSubmit} className="space-y-4">
+              <div>
+                <label className="block text-sm font-medium text-slate-700 mb-1">Email Address</label>
                 <input
-                  type="text"
-                  defaultValue="admin"
-                  className="w-full bg-slate-50 border border-slate-200 rounded-lg py-2.5 pl-10 pr-4 text-slate-900 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-cyan-500/20 focus:border-cyan-500 transition-all"
-                  placeholder="username"
+                  type="email"
+                  required
+                  className="w-full px-4 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-cyan-500 outline-none"
+                  value={email}
+                  onChange={e => setEmail(e.target.value)}
+                  placeholder="username@email.com"
                 />
               </div>
-            </div>
 
-            <div className="space-y-2">
-              <label className="text-xs font-medium text-slate-500 uppercase tracking-wider">Password</label>
-              <div className="relative group">
-                <Lock className="absolute left-3 top-3 h-5 w-5 text-slate-400 group-focus-within:text-cyan-600 transition-colors" />
-                <input
-                  type="password"
-                  defaultValue="admin123"
-                  className="w-full bg-slate-50 border border-slate-200 rounded-lg py-2.5 pl-10 pr-4 text-slate-900 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-cyan-500/20 focus:border-cyan-500 transition-all"
-                  placeholder="••••••••"
-                />
+              <div>
+                <label className="block text-sm font-medium text-slate-700 mb-1">Password</label>
+                <div className="relative">
+                  <input
+                    type={showPassword ? "text" : "password"}
+                    required
+                    className="w-full px-4 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-cyan-500 outline-none pr-10"
+                    value={password}
+                    onChange={e => setPassword(e.target.value)}
+                    placeholder="••••••••"
+                  />
+                  <button
+                    type="button"
+                    onClick={() => setShowPassword(!showPassword)}
+                    className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600"
+                  >
+                    {showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                  </button>
+                </div>
               </div>
-            </div>
 
-            <button
-              type="submit"
-              disabled={loading}
-              className="w-full bg-gradient-to-r from-cyan-600 to-blue-600 hover:from-cyan-700 hover:to-blue-700 text-white font-semibold py-3 rounded-lg shadow-lg shadow-cyan-500/20 transition-all transform hover:scale-[1.02] active:scale-[0.98] flex items-center justify-center gap-2"
-            >
-              {loading ? (
-                <>
-                  <Loader2 className="h-5 w-5 animate-spin" />
-                  Signing In...
-                </>
-              ) : (
-                <>
-                  Sign In
-                  <ArrowRight className="h-5 w-5" />
-                </>
-              )}
-            </button>
-          </form>
-
-          <div className="mt-6 text-center">
-            <p className="text-xs text-slate-400">
-              Protected by Enterprise Grade Security
-            </p>
+              <button
+                type="submit"
+                disabled={loading}
+                className="w-full py-3 bg-slate-900 text-white rounded-lg font-bold hover:bg-slate-800 transition-colors flex justify-center items-center"
+              >
+                {loading ? <Loader2 className="h-5 w-5 animate-spin" /> : 'Log In'}
+              </button>
+            </form>
           </div>
         </div>
       </div>

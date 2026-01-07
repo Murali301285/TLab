@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import Image from 'next/image';
 import Link from 'next/link';
 import {
@@ -8,553 +8,502 @@ import {
     FileText,
     CheckCircle,
     Loader2,
-    ChevronLeft,
     ArrowRight,
-    AlertCircle,
     Book,
-    Layers,
-    File,
-    Upload,
     Shield,
-    X,
-    Video,
-    Plus
+    ImageIcon,
+    Search,
+    Filter,
+    Edit,
+    Trash2,
+    Power,
+    RefreshCw,
+    Bot,
+    ChevronLeft
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
-import ProfileDropdown from '@/components/ProfileDropdown';
+import { uploadChunk, finalizeUpload } from '@/app/actions/ingest';
+import { getAdminCourses, toggleCourseStatus, deleteCourse, updateCourse, getCategories } from '@/app/actions/courses';
+import { useRouter } from 'next/navigation';
 
 export default function AdminUploadPage() {
-    const [activeTab, setActiveTab] = useState<'upload' | 'manage'>('upload');
-    const [dragActive, setDragActive] = useState(false);
+    const router = useRouter();
+
+    // View Mode: List vs Add
+    const [viewMode, setViewMode] = useState<'list' | 'add'>('list');
+
+    // Data States
+    const [adminCourses, setAdminCourses] = useState<any[]>([]);
+    const [isLoadingCourses, setIsLoadingCourses] = useState(false);
+    const [searchTerm, setSearchTerm] = useState('');
+    const [selectedCategoryFilter, setSelectedCategoryFilter] = useState('All');
+
+    // Categories State
+    const [categories, setCategories] = useState<any[]>([]);
+
+    // Add/Edit Form States
+    const [isEditing, setIsEditing] = useState(false);
+    const [editingId, setEditingId] = useState<string | null>(null);
+
+    const [status, setStatus] = useState<'idle' | 'uploading' | 'processing' | 'success' | 'review'>('idle');
     const [file, setFile] = useState<File | null>(null);
-    const [status, setStatus] = useState<'idle' | 'uploading' | 'processing' | 'review' | 'success'>('idle');
+    const [coverFile, setCoverFile] = useState<File | null>(null);
+    const [coverPreview, setCoverPreview] = useState<string | null>(null);
     const [progress, setProgress] = useState(0);
+    const [courseTitle, setCourseTitle] = useState('');
+    const [description, setDescription] = useState('');
     const [selectedCategory, setSelectedCategory] = useState<string>('');
+    const [selectedSubCategory, setSelectedSubCategory] = useState<string>('');
+    const [extractedData, setExtractedData] = useState<any>(null);
     const [error, setError] = useState<string | null>(null);
 
-    const [newCategory, setNewCategory] = useState('');
-    const [isAddingCategory, setIsAddingCategory] = useState(false);
-    const [categories, setCategories] = useState([
-        { id: 'library', name: 'Library (General Knowledge)' },
-        { id: 'hr', name: 'HR & Policies' },
-        { id: 'engineering', name: 'Engineering & Tech' },
-        { id: 'compliance', name: 'Legal & Compliance' },
-        { id: 'sales', name: 'Sales & Marketing' }
-    ]);
+    // Fetch Initial Data
+    useEffect(() => {
+        fetchCategories();
+        if (viewMode === 'list') {
+            fetchCourses();
+        }
+    }, [viewMode]);
 
-    interface ContentItem {
-        id: string;
-        title: string;
-        category: string;
-        type: 'pdf' | 'video' | 'doc';
-        size: string;
-        date: string;
-        status: 'active' | 'inactive';
-    }
-
-    const [contentItems, setContentItems] = useState<ContentItem[]>([
-        { id: '1', title: 'Corporate Sales Playbook 2024', category: 'sales', type: 'pdf', size: '12 MB', date: 'Oct 12, 2023', status: 'active' },
-        { id: '2', title: 'Engineering Onboarding', category: 'engineering', type: 'video', size: '450 MB', date: 'Nov 01, 2023', status: 'active' },
-        { id: '3', title: 'HR Policy Handbook', category: 'hr', type: 'pdf', size: '5 MB', date: 'Sep 15, 2023', status: 'active' },
-        { id: '4', title: 'Q4 Marketing Strategy', category: 'sales', type: 'doc', size: '2 MB', date: 'Dec 01, 2023', status: 'inactive' },
-    ]);
-
-    const toggleStatus = (id: string) => {
-        setContentItems(items => items.map(item =>
-            item.id === id ? { ...item, status: item.status === 'active' ? 'inactive' : 'active' } : item
-        ));
-    };
-
-    // Mock extracted data
-    const [extractedData, setExtractedData] = useState<any>(null);
-
-    const handleAddCategory = () => {
-        if (newCategory.trim()) {
-            const id = newCategory.toLowerCase().replace(/\s+/g, '-');
-            setCategories([...categories, { id, name: newCategory }]);
-            setSelectedCategory(id);
-            setNewCategory('');
-            setIsAddingCategory(false);
+    const fetchCategories = async () => {
+        const res = await getCategories();
+        if (res.success) {
+            setCategories(res.data || []);
         }
     };
 
-    const handleDrag = (e: React.DragEvent) => {
-        e.preventDefault();
-        e.stopPropagation();
-        if (e.type === "dragenter" || e.type === "dragover") {
-            setDragActive(true);
-        } else if (e.type === "dragleave") {
-            setDragActive(false);
-        }
-    };
-
-    const handleDrop = (e: React.DragEvent) => {
-        e.preventDefault();
-        e.stopPropagation();
-        setDragActive(false);
-        if (e.dataTransfer.files && e.dataTransfer.files[0]) {
-            handleFile(e.dataTransfer.files[0]);
-        }
-    };
-
-    const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-        e.preventDefault();
-        if (e.target.files && e.target.files[0]) {
-            handleFile(e.target.files[0]);
-        }
-    };
-
-    const handleFile = (file: File) => {
-        const validTypes = ['application/pdf', 'video/mp4', 'video/webm', 'application/vnd.openxmlformats-officedocument.wordprocessingml.document'];
-        if (validTypes.includes(file.type) || file.name.endsWith('.pdf') || file.name.endsWith('.docx')) {
-            setFile(file);
-            setStatus('idle');
-            setError(null);
+    const fetchCourses = async () => {
+        setIsLoadingCourses(true);
+        const res = await getAdminCourses();
+        if (res.success) {
+            setAdminCourses(res.data || []);
         } else {
-            setError("Please upload a valid PDF, Word, or Video file.");
-            setFile(null);
+            console.error(res.error);
         }
+        setIsLoadingCourses(false);
+    };
+
+    // Form Handlers
+    const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+        if (e.target.files && e.target.files[0]) {
+            setFile(e.target.files[0]);
+            setError(null);
+            // Auto-set title if empty
+            if (!courseTitle) {
+                const name = e.target.files[0].name.replace(/\.[^/.]+$/, "");
+                setCourseTitle(name.split('-').map(w => w.charAt(0).toUpperCase() + w.slice(1)).join(' '));
+            }
+        }
+    };
+
+    const handleCoverChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+        if (e.target.files && e.target.files[0]) {
+            const file = e.target.files[0];
+            setCoverFile(file);
+            setCoverPreview(URL.createObjectURL(file));
+        }
+    };
+
+    const resetForm = () => {
+        setFile(null);
+        setCoverFile(null);
+        setCoverPreview(null);
+        setCourseTitle('');
+        setDescription('');
+        setSelectedCategory('');
+        setSelectedSubCategory('');
+        setIsEditing(false);
+        setEditingId(null);
+        setStatus('idle');
+        setExtractedData(null);
+        setError(null);
+    };
+
+    const handleEditClick = (course: any) => {
+        setIsEditing(true);
+        setEditingId(course.id);
+        const name = course.title;
+        setCourseTitle(name);
+        setDescription(course.description || '');
+
+        // Map category properly
+        if (course.subCategory) {
+            setSelectedSubCategory(course.subCategory.id);
+            setSelectedCategory(course.subCategory.categoryId);
+        } else {
+            // Unmapped or Legacy
+            const cat = categories.find(c => c.name === course.category);
+            if (cat) setSelectedCategory(cat.id);
+            else setSelectedCategory(course.category || '');
+            setSelectedSubCategory('');
+        }
+
+        setCoverPreview(course.thumbnail);
+        setViewMode('add');
+    };
+
+    const handleDelete = async (courseId: string) => {
+        if (confirm("Are you sure you want to delete this course?")) {
+            await deleteCourse(courseId);
+            fetchCourses();
+        }
+    };
+
+    const handleToggleActive = async (courseId: string, currentStatus: boolean) => {
+        await toggleCourseStatus(courseId, !currentStatus);
+        fetchCourses();
     };
 
     const startUpload = async () => {
-        if (!selectedCategory) {
-            setError("Please select a category first.");
+        // Validation
+        const errors: string[] = [];
+        if (!courseTitle) errors.push("Title");
+        if (!selectedCategory) errors.push("Category");
+        // For Edit mode, file and cover are optional if they already exist
+        if (!isEditing && !coverFile) errors.push("Cover Image");
+        if (!isEditing && !file) errors.push("Document/Video");
+
+        if (errors.length > 0) {
+            setError(`Please complete: ${errors.join(', ')}.`);
             return;
         }
-        if (!file) return;
 
         setStatus('uploading');
+        setProgress(0);
         setError(null);
 
-        // Simulate upload progress visual only
-        let p = 0;
-        const interval = setInterval(() => {
-            p += 5;
-            if (p < 90) setProgress(p);
-        }, 100);
-
         try {
-            const formData = new FormData();
-            formData.append('file', file);
-            formData.append('category', selectedCategory);
+            let thumbnailUrl = coverPreview || '';
 
-            // Transition to processing state
-            setTimeout(() => setStatus('processing'), 1000);
-
-            const response = await fetch('/api/ingest', {
-                method: 'POST',
-                body: formData,
-            });
-
-            clearInterval(interval);
-            setProgress(100);
-
-            if (!response.ok) {
-                throw new Error('Upload failed');
+            // 1. Upload Cover Image (if new one selected)
+            if (coverFile) {
+                const coverFormData = new FormData();
+                coverFormData.append('file', coverFile);
+                const imgRes = await fetch('/api/upload/image', { method: 'POST', body: coverFormData });
+                const imgData = await imgRes.json();
+                if (imgData.success) {
+                    thumbnailUrl = imgData.url;
+                }
             }
 
-            const data = await response.json();
-            setExtractedData(data);
-            setStatus('review');
+            // Find category name for legacy string field
+            const catObj = categories.find(c => c.id === selectedCategory);
+            const categoryName = catObj ? catObj.name : selectedCategory;
 
-        } catch (error) {
-            console.error(error);
-            setError("Failed to process document. Please try again.");
+            // 2. Editing existing course (Metadata only or File replacement)
+            if (isEditing && editingId) {
+                let updatedData: any = {
+                    title: courseTitle,
+                    description,
+                    categoryName,
+                    subCategoryId: selectedSubCategory || undefined,
+                    thumbnailUrl,
+                    isActive: true
+                };
+
+                // Metadata update primarily
+                await updateCourse(editingId, updatedData);
+
+                // If user uploaded a new file, we could re-ingest, but currently that logic is skipped for simplicity 
+                // as it involves replacing chapters.
+                setStatus('success');
+                return;
+            }
+
+            // 3. New Upload (Chunked)
+            if (!file) return;
+
+            const CHUNK_SIZE = 2 * 1024 * 1024; // 2MB
+            const totalChunks = Math.ceil(file.size / CHUNK_SIZE);
+            const fileId = `${Date.now()}-${file.name}`;
+
+            for (let i = 0; i < totalChunks; i++) {
+                const start = i * CHUNK_SIZE;
+                const end = Math.min(file.size, start + CHUNK_SIZE);
+                const chunk = file.slice(start, end);
+
+                const formData = new FormData();
+                formData.append('fileId', fileId);
+                formData.append('chunkIndex', i.toString());
+                formData.append('chunk', chunk);
+
+                const res = await uploadChunk(formData);
+                if (!res.success) throw new Error(res.error);
+
+                setProgress(Math.round(((i + 1) / totalChunks) * 100));
+            }
+
+            // Finalize
+            setStatus('processing');
+            const finalFormData = new FormData();
+            finalFormData.append('fileId', fileId);
+            finalFormData.append('fileName', file.name);
+            finalFormData.append('category', categoryName); // Legacy string
+            finalFormData.append('subCategoryId', selectedSubCategory); // New Relation
+            finalFormData.append('title', courseTitle);
+            finalFormData.append('description', description);
+            finalFormData.append('thumbnailUrl', thumbnailUrl);
+
+            const ingestRes = await finalizeUpload(finalFormData);
+
+            if (ingestRes.success) {
+                setExtractedData(ingestRes.data);
+                setStatus('success');
+                fetchCourses(); // refresh list
+            } else {
+                throw new Error(ingestRes.error);
+            }
+
+        } catch (e: any) {
+            console.error(e);
+            setError(e.message || "An error occurred during upload.");
             setStatus('idle');
         }
     };
 
-    const handleSave = () => {
-        setStatus('success');
-        // In a real app, this would save to the database
-    };
+    // Filter Helper
+    const filteredCourses = adminCourses.filter(c =>
+        (searchTerm === '' || c.title.toLowerCase().includes(searchTerm.toLowerCase())) &&
+        (selectedCategoryFilter === 'All' || c.category === categories.find(cat => cat.id === selectedCategoryFilter)?.name || c.subCategory?.categoryId === selectedCategoryFilter)
+    );
+
+    // Get current subcategories based on selection
+    const currentSubCategories = selectedCategory
+        ? categories.find(c => c.id === selectedCategory)?.subCategories || []
+        : [];
 
     return (
         <div className="min-h-screen bg-slate-50 pb-20">
-            {/* Navigation */}
-            <nav className="sticky top-0 z-50 bg-slate-900 border-b border-white/10 shadow-md">
-                <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-                    <div className="relative flex items-center justify-center h-16">
-                        <div className="absolute left-0 flex items-center gap-4">
-                            <Link href="/dashboard" className="flex items-center gap-2 text-slate-400 hover:text-white transition-colors">
-                                <ChevronLeft className="h-5 w-5" />
-                                <span className="font-medium">Back to Dashboard</span>
-                            </Link>
-                        </div>
-                        <div className="text-white font-bold text-lg">Admin Content Ingestion</div>
-                        <div className="absolute right-0 flex items-center gap-4">
-                            <ProfileDropdown />
-                        </div>
+            <div className="bg-white border-b border-slate-200 sticky top-0 z-30 shadow-sm">
+                <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 h-16 flex items-center justify-between">
+                    <div className="flex items-center gap-4">
+                        <Link href="/dashboard" className="p-2 -ml-2 text-slate-400 hover:text-slate-700 hover:bg-slate-100 rounded-full transition-all" title="Back to Dashboard">
+                            <ChevronLeft className="h-6 w-6" />
+                        </Link>
+                        <h1 className="text-xl font-bold text-slate-900 flex items-center gap-2">
+                            <Shield className="h-6 w-6 text-cyan-600" /> Content Master
+                        </h1>
+                    </div>
+                    <div className="flex bg-slate-100 p-1 rounded-full relative">
+                        <button
+                            onClick={() => setViewMode('list')}
+                            className={cn(
+                                "relative z-10 px-6 py-2 rounded-full text-sm font-semibold transition-all duration-300",
+                                viewMode === 'list' ? "bg-white text-slate-900 shadow-md" : "text-slate-500 hover:text-slate-700"
+                            )}
+                        >
+                            Existing Content
+                        </button>
+                        <button
+                            onClick={() => { setViewMode('add'); resetForm(); }}
+                            className={cn(
+                                "relative z-10 px-6 py-2 rounded-full text-sm font-semibold transition-all duration-300",
+                                viewMode === 'add' ? "bg-white text-slate-900 shadow-md" : "text-slate-500 hover:text-slate-700"
+                            )}
+                        >
+                            {isEditing ? 'Edit Content' : 'Add New'}
+                        </button>
                     </div>
                 </div>
-            </nav>
+            </div>
 
-            <div className="max-w-4xl mx-auto px-4 py-10">
-                <div className="mb-8">
-                    <h1 className="text-3xl font-bold text-slate-900 mb-2">Content Management</h1>
-                    <p className="text-slate-600">
-                        Upload new courses or manage existing materials. Supports PDF, Word, and Video.
-                    </p>
-                </div>
+            <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+                {/* LIST View */}
+                {viewMode === 'list' && (
+                    <div className="animate-in fade-in slide-in-from-bottom-4">
+                        {/* Filters */}
+                        <div className="bg-white p-4 rounded-xl shadow-sm border border-slate-200 mb-6 flex flex-wrap gap-4 items-center justify-between">
+                            <div className="relative flex-1 min-w-[300px]">
+                                <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-5 w-5 text-slate-400" />
+                                <input
+                                    type="text"
+                                    placeholder="Search content by title..."
+                                    value={searchTerm}
+                                    onChange={(e) => setSearchTerm(e.target.value)}
+                                    className="w-full pl-10 pr-4 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-cyan-500 outline-none"
+                                />
+                            </div>
+                            <div className="flex items-center gap-2">
+                                <Filter className="h-5 w-5 text-slate-400" />
+                                <select
+                                    className="px-4 py-2 border border-slate-300 rounded-lg outline-none focus:ring-2 focus:ring-cyan-500 max-w-[200px]"
+                                    value={selectedCategoryFilter}
+                                    onChange={(e) => setSelectedCategoryFilter(e.target.value)}
+                                >
+                                    <option value="All">All Categories</option>
+                                    {categories.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
+                                </select>
+                            </div>
+                            <button onClick={fetchCourses} className="p-2 text-slate-500 hover:text-cyan-600 transition-colors">
+                                <RefreshCw className={cn("h-5 w-5", isLoadingCourses && "animate-spin")} />
+                            </button>
+                        </div>
 
-                {/* Tabs */}
-                <div className="flex gap-4 mb-8 border-b border-slate-200">
-                    <button
-                        onClick={() => setActiveTab('upload')}
-                        className={cn(
-                            "px-4 py-2 text-sm font-bold border-b-2 transition-colors",
-                            activeTab === 'upload' ? "border-cyan-500 text-cyan-700" : "border-transparent text-slate-500 hover:text-slate-800"
+                        {/* Content Grid */}
+                        {isLoadingCourses ? (
+                            <div className="flex justify-center py-20">
+                                <Loader2 className="h-8 w-8 animate-spin text-cyan-600 text-center" />
+                            </div>
+                        ) : (
+                            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                                {filteredCourses.map((course) => (
+                                    <div key={course.id} className="group bg-white rounded-xl border border-slate-200 shadow-sm hover:shadow-lg transition-all overflow-hidden flex flex-col">
+                                        <div className="relative h-48 w-full bg-slate-100">
+                                            {course.thumbnail ? (
+                                                <Image src={course.thumbnail} alt={course.title} fill className="object-cover group-hover:scale-105 transition-transform duration-500" />
+                                            ) : (
+                                                <div className="flex items-center justify-center h-full text-slate-300">
+                                                    <ImageIcon className="h-12 w-12" />
+                                                </div>
+                                            )}
+                                            <div className="absolute top-3 left-3">
+                                                <span className={cn("px-3 py-1 rounded-full text-xs font-bold uppercase tracking-wider backdrop-blur-md", course.isActive ? "bg-green-500/90 text-white" : "bg-slate-500/90 text-white")}>
+                                                    {course.isActive ? 'Active' : 'Inactive'}
+                                                </span>
+                                            </div>
+                                        </div>
+                                        <div className="p-5 flex-1 flex flex-col">
+                                            <div className="flex justify-between items-start mb-2">
+                                                <span className="text-xs font-semibold text-cyan-600 bg-cyan-50 px-2 py-1 rounded-md mb-2 inline-block">
+                                                    {/* Display Category Name */}
+                                                    {course.subCategory?.category?.name || course.category}
+                                                </span>
+                                                <div className="flex gap-1">
+                                                    <button onClick={() => handleToggleActive(course.id, course.isActive)} className={cn("p-1.5 rounded-md hover:bg-slate-100", course.isActive ? "text-green-600" : "text-slate-400")} title={course.isActive ? "Deactivate" : "Activate"}><Power className="h-4 w-4" /></button>
+                                                    <button onClick={() => handleEditClick(course)} className="p-1.5 text-slate-500 hover:text-blue-600 hover:bg-blue-50 rounded-md" title="Edit"><Edit className="h-4 w-4" /></button>
+                                                    <button onClick={() => handleDelete(course.id)} className="p-1.5 text-slate-500 hover:text-red-600 hover:bg-red-50 rounded-md" title="Delete"><Trash2 className="h-4 w-4" /></button>
+                                                </div>
+                                            </div>
+                                            <h3 className="text-lg font-bold text-slate-900 mb-2 line-clamp-2">{course.title}</h3>
+                                            <p className="text-sm text-slate-500 mb-4 line-clamp-3 flex-1">{course.description || "No description provided."}</p>
+                                            <div className="mt-auto border-t border-slate-100 pt-4 flex justify-between items-center text-sm text-slate-500">
+                                                <span>{/* Chapters count */}</span>
+                                                <Link href={`/learn/${course.id}`} className="flex items-center gap-1 text-cyan-600 font-semibold hover:gap-2 transition-all">
+                                                    Preview <ArrowRight className="h-4 w-4" />
+                                                </Link>
+                                            </div>
+                                        </div>
+                                    </div>
+                                ))}
+                                {filteredCourses.length === 0 && (
+                                    <div className="col-span-full py-12 text-center text-slate-400 bg-white rounded-xl border border-dashed border-slate-300">
+                                        <Book className="h-12 w-12 mx-auto mb-3 opacity-20" />
+                                        <p>No content found matching your search.</p>
+                                    </div>
+                                )}
+                            </div>
                         )}
-                    >
-                        Upload New
-                    </button>
-                    <button
-                        onClick={() => setActiveTab('manage')}
-                        className={cn(
-                            "px-4 py-2 text-sm font-bold border-b-2 transition-colors",
-                            activeTab === 'manage' ? "border-cyan-500 text-cyan-700" : "border-transparent text-slate-500 hover:text-slate-800"
-                        )}
-                    >
-                        Manage Content
-                    </button>
-                </div>
+                    </div>
+                )}
 
-                {activeTab === 'upload' ? (
-                    <>
-                        {/* Upload Area */}
+                {/* ADD / EDIT View */}
+                {viewMode === 'add' && (
+                    <div className="animate-in fade-in slide-in-from-bottom-4">
                         {status === 'idle' && (
-                            <div className="space-y-6">
-                                {/* Category Selection */}
-                                <div className="bg-white p-6 rounded-xl border border-slate-200 shadow-sm">
-                                    <label className="block text-sm font-bold text-slate-700 mb-2">
-                                        Select Section / Category
-                                    </label>
-                                    <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
-                                        {categories.map((cat) => (
+                            <div className="bg-white p-6 rounded-xl border border-slate-200 shadow-sm space-y-6 max-w-4xl mx-auto">
+                                <div className="flex justify-between items-center border-b border-slate-100 pb-4">
+                                    <h3 className="font-bold text-lg text-slate-800">{isEditing ? `Edit Course: ${courseTitle}` : '1. Content Details'}</h3>
+                                    {isEditing && <button onClick={() => { setViewMode('list'); resetForm(); }} className="text-sm text-slate-500 hover:text-slate-800">Cancel Editing</button>}
+                                </div>
+
+                                <div>
+                                    <label className="block text-sm font-medium text-slate-700 mb-1">Title</label>
+                                    <input type="text" maxLength={150} value={courseTitle} onChange={(e) => setCourseTitle(e.target.value)} placeholder="e.g. Advanced Sales Tactics 2025" className="w-full px-4 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-cyan-500 outline-none" />
+                                </div>
+                                <div>
+                                    <label className="block text-sm font-medium text-slate-700 mb-1">Description</label>
+                                    <textarea value={description} onChange={(e) => setDescription(e.target.value)} placeholder="Enter a brief description..." className="w-full px-4 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-cyan-500 outline-none resize-y min-h-[4.5rem]" rows={2} />
+                                </div>
+
+                                {/* Modern Category Selection */}
+                                <div>
+                                    <label className="block text-sm font-medium text-slate-700 mb-3">Category</label>
+                                    <div className="flex flex-wrap gap-2 mb-4">
+                                        {categories.map((cat: any) => (
                                             <button
                                                 key={cat.id}
-                                                onClick={() => setSelectedCategory(cat.id)}
+                                                onClick={() => { setSelectedCategory(cat.id); setSelectedSubCategory(''); }}
                                                 className={cn(
-                                                    "px-4 py-3 rounded-lg text-sm font-medium border transition-all text-left",
+                                                    "px-4 py-2 rounded-lg text-sm font-medium border transition-all",
                                                     selectedCategory === cat.id
                                                         ? "bg-cyan-50 border-cyan-500 text-cyan-700 ring-1 ring-cyan-500"
-                                                        : "bg-slate-50 border-slate-200 text-slate-600 hover:border-cyan-300 hover:bg-white"
+                                                        : "bg-white border-slate-200 text-slate-600 hover:border-cyan-300 hover:text-cyan-600"
                                                 )}
                                             >
                                                 {cat.name}
                                             </button>
                                         ))}
-                                        {isAddingCategory ? (
-                                            <div className="flex items-center gap-2 px-2">
-                                                <input
-                                                    type="text"
-                                                    autoFocus
-                                                    className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-cyan-500"
-                                                    placeholder="Category Name"
-                                                    value={newCategory}
-                                                    onChange={(e) => setNewCategory(e.target.value)}
-                                                    onKeyDown={(e) => {
-                                                        if (e.key === 'Enter') handleAddCategory();
-                                                        if (e.key === 'Escape') setIsAddingCategory(false);
-                                                    }}
-                                                />
-                                                <button onClick={handleAddCategory} className="p-2 bg-cyan-600 text-white rounded-lg hover:bg-cyan-700">
-                                                    <CheckCircle className="h-4 w-4" />
-                                                </button>
-                                                <button onClick={() => setIsAddingCategory(false)} className="p-2 text-slate-400 hover:text-slate-600">
-                                                    <X className="h-4 w-4" />
-                                                </button>
-                                            </div>
-                                        ) : (
-                                            <button
-                                                onClick={() => setIsAddingCategory(true)}
-                                                className="px-4 py-3 rounded-lg text-sm font-medium border border-dashed border-slate-300 text-slate-500 hover:border-cyan-400 hover:text-cyan-600 hover:bg-cyan-50 transition-all flex items-center justify-center gap-2"
-                                            >
-                                                <Plus className="h-4 w-4" /> Add New Category
-                                            </button>
-                                        )}
-                                    </div>
-                                </div>
-
-                                <div
-                                    className={cn(
-                                        "border-2 border-dashed rounded-2xl p-12 flex flex-col items-center justify-center text-center transition-all bg-white",
-                                        dragActive ? "border-cyan-500 bg-cyan-50" : "border-slate-300 hover:border-cyan-400"
-                                    )}
-                                    onDragEnter={handleDrag}
-                                    onDragLeave={handleDrag}
-                                    onDragOver={handleDrag}
-                                    onDrop={handleDrop}
-                                >
-                                    <div className="w-20 h-20 bg-cyan-100 text-cyan-600 rounded-full flex items-center justify-center mb-6">
-                                        {file ? <FileText className="h-10 w-10" /> : <UploadCloud className="h-10 w-10" />}
                                     </div>
 
-                                    {file ? (
-                                        <div className="mb-6">
-                                            <p className="text-xl font-bold text-slate-900 mb-2">{file.name}</p>
-                                            <p className="text-sm text-slate-500">{(file.size / 1024 / 1024).toFixed(2)} MB</p>
-                                            <button
-                                                onClick={() => setFile(null)}
-                                                className="text-red-500 text-sm hover:underline mt-2"
-                                            >
-                                                Remove file
-                                            </button>
-                                        </div>
-                                    ) : (
-                                        <div className="mb-6">
-                                            <p className="text-xl font-bold text-slate-900 mb-2">Drag & Drop your document here</p>
-                                            <p className="text-slate-500 mb-4">Supports PDF, DOCX, MP4 (Max 50MB)</p>
-                                        </div>
-                                    )}
-
-                                    <div className="relative">
-                                        <input
-                                            type="file"
-                                            id="file-upload"
-                                            className="hidden"
-                                            onChange={handleChange}
-                                            accept=".pdf,.docx,.doc,video/*"
-                                        />
-                                        {!file && (
-                                            <label
-                                                htmlFor="file-upload"
-                                                className="px-6 py-3 bg-slate-900 text-white rounded-lg font-medium hover:bg-slate-800 cursor-pointer transition-colors inline-flex items-center gap-2"
-                                            >
-                                                Browse Files
-                                            </label>
-                                        )}
-                                        {file && (
-                                            <button
-                                                onClick={startUpload}
-                                                disabled={!selectedCategory}
-                                                className={cn(
-                                                    "px-8 py-3 rounded-lg font-bold transition-all inline-flex items-center gap-2",
-                                                    selectedCategory
-                                                        ? "bg-gradient-to-r from-cyan-600 to-blue-600 text-white hover:shadow-lg hover:scale-105"
-                                                        : "bg-slate-200 text-slate-400 cursor-not-allowed"
-                                                )}
-                                            >
-                                                Start Processing <ArrowRight className="h-5 w-5" />
-                                            </button>
-                                        )}
-                                    </div>
-                                    {error && (
-                                        <p className="text-red-500 text-sm mt-4 font-medium flex items-center gap-2">
-                                            <AlertCircle className="h-4 w-4" /> {error}
-                                        </p>
-                                    )}
-                                </div>
-
-                                <div className="bg-blue-50 p-4 rounded-lg flex items-start gap-3 text-sm text-blue-700 border border-blue-100">
-                                    <Shield className="h-5 w-5 shrink-0 mt-0.5" />
-                                    <div>
-                                        <p className="font-bold mb-1">Data Security Note</p>
-                                        <p>
-                                            Text extraction is performed locally on this server.
-                                            If an API Key is configured, only the extracted text is sent to the AI provider for analysis.
-                                            No files are stored permanently on external servers.
-                                        </p>
-                                    </div>
-                                </div>
-                            </div>
-                        )}
-
-                        {/* Progress State */}
-                        {(status === 'uploading' || status === 'processing') && (
-                            <div className="bg-white rounded-2xl p-12 shadow-sm border border-slate-200 text-center">
-                                <div className="w-20 h-20 mx-auto bg-cyan-50 text-cyan-600 rounded-full flex items-center justify-center mb-6 relative">
-                                    {status === 'processing' ? (
-                                        <Loader2 className="h-10 w-10 animate-spin" />
-                                    ) : (
-                                        <UploadCloud className="h-10 w-10 animate-bounce" />
-                                    )}
-                                </div>
-
-                                <h2 className="text-2xl font-bold text-slate-900 mb-2">
-                                    {status === 'uploading' ? 'Uploading Document...' : 'AI Processing...'}
-                                </h2>
-                                <p className="text-slate-500 mb-8 max-w-md mx-auto">
-                                    {status === 'uploading'
-                                        ? 'Please wait while we securely upload your file.'
-                                        : 'Our AI is analyzing the content, extracting chapters, and generating study materials.'}
-                                </p>
-
-                                <div className="max-w-md mx-auto">
-                                    <div className="flex justify-between text-xs font-bold text-slate-500 mb-2">
-                                        <span>Progress</span>
-                                        <span>{status === 'processing' ? 'Analyzing...' : `${progress}%`}</span>
-                                    </div>
-                                    <div className="w-full bg-slate-100 h-3 rounded-full overflow-hidden">
-                                        <div
-                                            className={cn(
-                                                "h-full rounded-full transition-all duration-500",
-                                                status === 'processing' ? "bg-purple-500 w-full animate-pulse" : "bg-cyan-500"
-                                            )}
-                                            style={{ width: status === 'processing' ? '100%' : `${progress}%` }}
-                                        />
-                                    </div>
-                                </div>
-                            </div>
-                        )}
-
-                        {/* Review State */}
-                        {status === 'review' && extractedData && (
-                            <div className="space-y-6 animate-in fade-in slide-in-from-bottom-4 duration-500">
-                                <div className="bg-green-50 border border-green-200 rounded-xl p-4 flex items-center gap-3 text-green-800">
-                                    <CheckCircle className="h-5 w-5" />
-                                    <span className="font-medium">Analysis Complete! Review the extracted structure below.</span>
-                                </div>
-
-                                <div className="bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden">
-                                    <div className="p-6 border-b border-slate-100 bg-slate-50/50 flex justify-between items-center">
-                                        <div>
-                                            <h2 className="text-xl font-bold text-slate-900">{extractedData.title}</h2>
-                                            <p className="text-sm text-slate-500">
-                                                Extracted from {file?.name} • <span className="font-medium text-cyan-600">{extractedData.category}</span>
-                                            </p>
-                                        </div>
-                                        <div className="flex gap-2">
-                                            <span className="px-3 py-1 bg-purple-100 text-purple-700 rounded-full text-xs font-bold border border-purple-200">
-                                                {extractedData.chapters.length} Chapters
-                                            </span>
-                                        </div>
-                                    </div>
-
-                                    <div className="p-6 space-y-6">
-                                        {extractedData.chapters.map((chapter: any, idx: number) => (
-                                            <div key={idx} className="border border-slate-200 rounded-xl p-4 hover:border-cyan-200 transition-colors">
-                                                <h3 className="font-bold text-slate-800 flex items-center gap-2 mb-3">
-                                                    <Book className="h-4 w-4 text-cyan-600" />
-                                                    {chapter.title}
-                                                </h3>
-                                                <div className="pl-6 space-y-2">
-                                                    {chapter.topics.map((topic: string, tIdx: number) => (
-                                                        <div key={tIdx} className="flex items-center gap-2 text-sm text-slate-600 bg-slate-50 p-2 rounded-lg">
-                                                            <File className="h-3 w-3 text-slate-400" />
-                                                            {topic}
-                                                        </div>
-                                                    ))}
-                                                </div>
-                                            </div>
-                                        ))}
-                                    </div>
-
-                                    <div className="p-6 bg-slate-50 border-t border-slate-200 flex justify-end gap-4">
-                                        <button
-                                            onClick={() => setStatus('idle')}
-                                            className="px-6 py-2 text-slate-600 font-medium hover:text-slate-900"
-                                        >
-                                            Cancel
-                                        </button>
-                                        <button
-                                            onClick={handleSave}
-                                            className="px-6 py-2 bg-cyan-600 text-white rounded-lg font-bold hover:bg-cyan-700 shadow-lg shadow-cyan-500/20"
-                                        >
-                                            Confirm & Create Course
-                                        </button>
-                                    </div>
-                                </div>
-                            </div>
-                        )}
-
-                        {/* Success State */}
-                        {status === 'success' && (
-                            <div className="bg-white rounded-2xl p-12 shadow-sm border border-slate-200 text-center animate-in zoom-in duration-300">
-                                <div className="w-20 h-20 mx-auto bg-green-100 text-green-600 rounded-full flex items-center justify-center mb-6">
-                                    <CheckCircle className="h-10 w-10" />
-                                </div>
-                                <h2 className="text-3xl font-bold text-slate-900 mb-4">Course Created Successfully!</h2>
-                                <p className="text-slate-600 mb-8 max-w-md mx-auto">
-                                    The content has been ingested and AI study aids have been generated. You can now assign this course to users.
-                                </p>
-                                <div className="flex justify-center gap-4">
-                                    <button
-                                        onClick={() => setStatus('idle')}
-                                        className="px-6 py-3 border border-slate-300 text-slate-700 rounded-lg font-medium hover:bg-slate-50"
-                                    >
-                                        Upload Another
-                                    </button>
-                                    <Link
-                                        href="/dashboard"
-                                        className="px-6 py-3 bg-slate-900 text-white rounded-lg font-medium hover:bg-slate-800"
-                                    >
-                                        Go to Dashboard
-                                    </Link>
-                                </div>
-                            </div>
-                        )}
-                    </>
-                ) : (
-                    <div className="space-y-8">
-                        {categories.map(category => {
-                            const categoryItems = contentItems.filter(item => item.category === category.id);
-                            if (categoryItems.length === 0) return null;
-
-                            return (
-                                <div key={category.id} className="bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden">
-                                    <div className="px-6 py-4 bg-slate-50 border-b border-slate-100 flex items-center justify-between">
-                                        <h3 className="font-bold text-slate-900 flex items-center gap-2">
-                                            <Layers className="h-5 w-5 text-cyan-600" />
-                                            {category.name}
-                                        </h3>
-                                        <span className="text-xs font-bold bg-white px-2 py-1 rounded border border-slate-200 text-slate-500">
-                                            {categoryItems.length} Items
-                                        </span>
-                                    </div>
-                                    <div className="divide-y divide-slate-100">
-                                        {categoryItems.map(item => (
-                                            <div key={item.id} className="p-4 flex items-center justify-between hover:bg-slate-50 transition-colors">
-                                                <div className="flex items-center gap-4">
-                                                    <div className={cn(
-                                                        "h-12 w-12 rounded-lg flex items-center justify-center",
-                                                        item.status === 'active' ? "bg-cyan-50 text-cyan-600" : "bg-slate-100 text-slate-400"
-                                                    )}>
-                                                        {item.type === 'video' ? <Video className="h-6 w-6" /> : <FileText className="h-6 w-6" />}
-                                                    </div>
-                                                    <div>
-                                                        <h4 className={cn("font-bold", item.status === 'active' ? "text-slate-900" : "text-slate-500")}>
-                                                            {item.title}
-                                                        </h4>
-                                                        <div className="flex items-center gap-2 text-xs text-slate-500">
-                                                            <span>{item.date}</span>
-                                                            <span>•</span>
-                                                            <span>{item.size}</span>
-                                                            {item.status === 'inactive' && (
-                                                                <span className="bg-slate-200 text-slate-600 px-1.5 py-0.5 rounded font-medium">Inactive</span>
-                                                            )}
-                                                        </div>
-                                                    </div>
-                                                </div>
-                                                <div className="flex gap-2">
+                                    {/* SubCategory Selection */}
+                                    {selectedCategory && currentSubCategories.length > 0 && (
+                                        <div className="animate-in fade-in slide-in-from-top-2 p-4 bg-slate-50 rounded-lg border border-slate-100">
+                                            <label className="block text-xs font-bold text-slate-500 uppercase tracking-widest mb-3">Sub-Category</label>
+                                            <div className="flex flex-wrap gap-2">
+                                                {currentSubCategories.map((sub: any) => (
                                                     <button
-                                                        onClick={() => alert(`Edit ${item.title}`)}
-                                                        className="px-3 py-1.5 text-sm font-medium text-slate-600 hover:text-cyan-600 hover:bg-cyan-50 rounded-lg transition-colors border border-transparent hover:border-cyan-100"
-                                                    >
-                                                        Edit
-                                                    </button>
-                                                    <button
-                                                        onClick={() => toggleStatus(item.id)}
+                                                        key={sub.id}
+                                                        onClick={() => setSelectedSubCategory(sub.id)}
                                                         className={cn(
-                                                            "px-3 py-1.5 text-sm font-medium rounded-lg transition-colors border",
-                                                            item.status === 'active'
-                                                                ? "text-red-600 hover:bg-red-50 border-transparent hover:border-red-100"
-                                                                : "text-green-600 hover:bg-green-50 border-transparent hover:border-green-100"
+                                                            "px-3 py-1.5 rounded-md text-sm transition-all border",
+                                                            selectedSubCategory === sub.id
+                                                                ? "bg-white border-cyan-500 text-cyan-700 shadow-sm"
+                                                                : "bg-transparent border-transparent hover:bg-white hover:border-slate-200 text-slate-600"
                                                         )}
                                                     >
-                                                        {item.status === 'active' ? 'Mark Inactive' : 'Activate'}
+                                                        {sub.name}
                                                     </button>
-                                                </div>
+                                                ))}
                                             </div>
-                                        ))}
+                                        </div>
+                                    )}
+                                </div>
+
+                                <div className="grid grid-cols-1 md:grid-cols-2 gap-6 pt-4 border-t border-slate-100">
+                                    <div>
+                                        <label className="block text-sm font-bold text-slate-800 mb-2">Cover Image {isEditing && "(Optional)"}</label>
+                                        <div className={cn("relative w-full aspect-video rounded-xl border-2 border-dashed flex flex-col items-center justify-center cursor-pointer transition-all overflow-hidden", coverFile ? "border-cyan-500 bg-cyan-50" : "border-slate-300 hover:border-cyan-400 bg-slate-50")}>
+                                            <input type="file" accept="image/*" onChange={handleCoverChange} className="absolute inset-0 opacity-0 cursor-pointer z-10" />
+                                            {coverPreview ? <Image src={coverPreview} alt="Cover" fill className="object-cover" /> : <div className="text-center p-4"><ImageIcon className="h-8 w-8 text-slate-400 mx-auto mb-2" /><span className="text-sm text-slate-500">Upload Cover</span></div>}
+                                        </div>
+                                    </div>
+                                    <div>
+                                        <label className="block text-sm font-bold text-slate-800 mb-2">{isEditing ? "Replace Content (Optional)" : "Course Content"}</label>
+                                        <div className={cn("relative w-full aspect-video rounded-xl border-2 border-dashed flex flex-col items-center justify-center cursor-pointer transition-all bg-slate-50", file ? "border-cyan-500 bg-cyan-50" : "border-slate-300 hover:border-cyan-400")}>
+                                            <input type="file" accept=".pdf,.docx,.mp4,.webm,.mov" onChange={handleFileChange} className="absolute inset-0 opacity-0 cursor-pointer z-10" />
+                                            {file ? <div className="text-center p-4"><FileText className="h-8 w-8 text-cyan-600 mx-auto mb-2 animate-bounce" /><p className="text-sm font-medium text-cyan-700 truncate max-w-[200px]">{file.name}</p></div> : <div className="text-center p-4"><UploadCloud className="h-8 w-8 text-slate-400 mx-auto mb-2" /><p className="text-sm text-slate-500 font-medium">Click to Upload</p><p className="text-xs text-slate-400 mt-1">PDF, DOCX, Video</p></div>}
+                                        </div>
                                     </div>
                                 </div>
-                            );
-                        })}
-                        {contentItems.length === 0 && (
-                            <div className="text-center py-12 text-slate-400">
-                                <FileText className="h-12 w-12 mx-auto mb-4 opacity-20" />
-                                <p>No content found.</p>
+                                <div className="flex justify-end pt-6">
+                                    <button onClick={startUpload} className={cn("px-8 py-3 rounded-xl font-bold text-lg shadow-lg transition-all flex items-center gap-2", "bg-gradient-to-r from-cyan-600 to-blue-600 text-white hover:scale-105")}>
+                                        {isEditing ? <CheckCircle className="h-5 w-5" /> : <ArrowRight className="h-5 w-5" />} {isEditing ? "Update Content" : "Start Ingestion"}
+                                    </button>
+                                </div>
+                                {error && <p className="text-center text-red-500 font-medium mt-4">{error}</p>}
+                            </div>
+                        )}
+                        {/* Status Views ... */}
+                        {status === 'uploading' && (
+                            <div className="max-w-md mx-auto mt-10 text-center">
+                                <Loader2 className="h-12 w-12 text-cyan-500 animate-spin mx-auto mb-4" />
+                                <h3 className="text-xl font-bold text-slate-800">Uploading... {progress}%</h3>
+                                <div className="w-full bg-slate-200 h-3 rounded-full mt-4 overflow-hidden"><div className="bg-cyan-500 h-full transition-all duration-300" style={{ width: `${progress}%` }} /></div>
+                            </div>
+                        )}
+                        {status === 'processing' && (
+                            <div className="max-w-md mx-auto mt-10 text-center">
+                                <div className="relative inline-block"><div className="absolute inset-0 bg-cyan-500 rounded-full animate-ping opacity-20" /><Bot className="h-16 w-16 text-cyan-600 relative z-10" /></div>
+                                <h3 className="text-xl font-bold text-slate-800 mt-6">Processing with AI</h3>
+                                <p className="text-slate-500 mt-2">Analyzing structure and generating topics...</p>
+                            </div>
+                        )}
+                        {status === 'success' && (
+                            <div className="bg-white rounded-2xl p-12 shadow-sm border border-slate-200 text-center animate-in zoom-in max-w-2xl mx-auto">
+                                <CheckCircle className="h-16 w-16 text-green-500 mx-auto mb-4" />
+                                <h2 className="text-3xl font-bold text-slate-900 mb-2">Success!</h2>
+                                <p className="text-slate-600 mb-8">{isEditing ? "Course updated successfully." : "Course created successfully."}</p>
+                                <button onClick={() => { setViewMode('list'); resetForm(); }} className="px-6 py-3 bg-slate-900 text-white rounded-lg font-bold">Back to Content List</button>
                             </div>
                         )}
                     </div>

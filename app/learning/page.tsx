@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import Link from 'next/link';
 import { COURSES, BOOKS, Book, Course } from '@/data/mockData';
 import {
@@ -15,7 +15,8 @@ import {
     Library,
     Search,
     Plus,
-    Bookmark
+    Bookmark,
+    Trash2
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import ProfileDropdown from '@/components/ProfileDropdown';
@@ -27,11 +28,33 @@ export default function MyLearningPage() {
     const [isBrowseMode, setIsBrowseMode] = useState(false);
 
     // Mock User State (In real app, this comes from auth context)
+    // Mock User State (In real app, this comes from auth context)
     const [myLibraryIds, setMyLibraryIds] = useState<string[]>(['b1', 'b2']);
     const [myCourseIds, setMyCourseIds] = useState<string[]>(['c1', 'c2', 'c3']);
+    const [allCourses, setAllCourses] = useState<any[]>(COURSES);
+
+    useEffect(() => {
+        // Fetch real courses from API
+        const fetchCourses = async () => {
+            try {
+                const res = await fetch('/api/courses');
+                if (res.ok) {
+                    const data = await res.json();
+                    setAllCourses(data); // Replace static courses with DB courses
+                    // For demo, assume user owns all courses or use a logic
+                    const allIds = data.map((c: any) => c.id);
+                    setMyCourseIds(allIds);
+                }
+            } catch (error) {
+                console.error("Failed to fetch courses", error);
+            }
+        };
+
+        fetchCourses();
+    }, []);
 
     // Derived Data
-    const myCourses = COURSES.filter(c => myCourseIds.includes(c.id));
+    const myCourses = allCourses.filter(c => myCourseIds.includes(c.id));
     const myBooks = BOOKS.filter(b => myLibraryIds.includes(b.id));
 
     // Get Categories with Counts
@@ -72,6 +95,31 @@ export default function MyLearningPage() {
             setMyLibraryIds([...myLibraryIds, id]);
         }
         alert("Added to your collection!");
+    };
+
+    const handleDeleteCourse = (e: React.MouseEvent, id: string, title: string) => {
+        e.preventDefault();
+        e.stopPropagation();
+
+        if (!confirm(`Are you sure you want to delete "${title}"?`)) return;
+
+        // 1. Remove from State
+        setMyCourseIds(prev => prev.filter(cid => cid !== id));
+        setAllCourses(prev => prev.filter(c => c.id !== id));
+
+        // 2. Remove from LocalStorage if it's a custom course
+        if (id.startsWith('custom-')) {
+            try {
+                const custom = localStorage.getItem('customCourses');
+                if (custom) {
+                    const courses = JSON.parse(custom);
+                    const updated = courses.filter((c: any) => c.id !== id);
+                    localStorage.setItem('customCourses', JSON.stringify(updated));
+                }
+            } catch (err) {
+                console.error("Error deleting from local storage", err);
+            }
+        }
     };
 
     return (
@@ -228,6 +276,13 @@ export default function MyLearningPage() {
                                                     )}>
                                                         {item.category}
                                                     </span>
+                                                    <button
+                                                        onClick={(e) => handleDeleteCourse(e, item.id, item.title)}
+                                                        className="text-slate-400 hover:text-red-500 transition-colors p-1"
+                                                        title="Remove from collection"
+                                                    >
+                                                        <Trash2 className="h-4 w-4" />
+                                                    </button>
                                                 </div>
                                                 <h3 className="text-lg font-bold text-slate-900 mb-1">{item.title}</h3>
                                                 <p className="text-xs text-slate-500 mb-3 line-clamp-1">

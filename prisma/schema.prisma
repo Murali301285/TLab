@@ -1,0 +1,144 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id        String   @id @default(cuid())
+  email     String   @unique
+  password  String
+  name      String?
+  image     String?
+  role      String   @default("student") // 'admin', 'manager', 'student'
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  isActive  Boolean  @default(true)
+  department String?
+  
+  courses   Course[] @relation("CreatedCourses")
+  enrollments Enrollment[]
+  progress  UserProgress[]
+  managerId String?
+}
+
+model Course {
+  id          String   @id @default(cuid())
+  title       String
+  description String?
+  // Deprecated string category, use relation below in future
+  category    String   @default("General") 
+  type        String   @default("COURSE") // COURSE or LIBRARY
+  
+  subCategoryId String?
+  subCategory   SubCategory? @relation(fields: [subCategoryId], references: [id])
+  
+  thumbnail   String?
+  fileUrl     String?
+  sourceText  String?  @db.Text
+  
+  authorId    String
+  author      User     @relation("CreatedCourses", fields: [authorId], references: [id])
+  
+  chapters    Chapter[]
+  enrollments Enrollment[]
+  
+  isActive    Boolean  @default(true)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+}
+
+model Chapter {
+  id       String   @id @default(cuid())
+  title    String
+  courseId String
+  course   Course   @relation(fields: [courseId], references: [id], onDelete: Cascade)
+  
+  topics   Topic[]
+}
+
+model Topic {
+  id        String   @id @default(cuid())
+  title     String
+  content   String   @db.Text
+  type      String   @default("text") // 'text', 'video', 'quiz'
+  
+  chapterId String
+  chapter   Chapter  @relation(fields: [chapterId], references: [id], onDelete: Cascade)
+  progress  UserProgress[]
+}
+
+model UserProgress {
+  id        String   @id @default(cuid())
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  
+  topicId   String
+  topic     Topic    @relation(fields: [topicId], references: [id], onDelete: Cascade)
+  completed Boolean  @default(false)
+  lastAccessed DateTime @default(now())
+
+  @@unique([userId, topicId])
+}
+
+// --- New Masters ---
+
+model Category {
+  id            String        @id @default(cuid())
+  name          String        @unique
+  remarks       String?
+  isActive      Boolean       @default(true)
+  subCategories SubCategory[]
+  createdAt     DateTime      @default(now())
+  updatedAt     DateTime      @updatedAt
+}
+
+model Department {
+  id        String   @id @default(cuid())
+  name      String   @unique
+  remarks   String?
+  isActive  Boolean  @default(true)
+  
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model SubCategory {
+  id         String   @id @default(cuid())
+  name       String
+  remarks    String?
+  isActive   Boolean  @default(true)
+  
+  categoryId String
+  category   Category @relation(fields: [categoryId], references: [id], onDelete: Cascade)
+  
+  courses    Course[]
+  
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+  
+  @@unique([name, categoryId])
+}
+
+model Enrollment {
+  id             String    @id @default(cuid())
+  userId         String
+  user           User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  
+  courseId       String
+  course         Course    @relation(fields: [courseId], references: [id], onDelete: Cascade)
+  
+  assignedAt     DateTime  @default(now())
+  expiresAt      DateTime?
+  validityValue  Int?      // e.g. 30
+  validityUnit   String?   // 'DAYS' or 'YEARS'
+  
+  hasCertificate Boolean   @default(false)
+  certName       String?
+  certUrl        String?
+  
+  @@unique([userId, courseId])
+}
