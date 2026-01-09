@@ -1,41 +1,92 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import Link from 'next/link';
-import { ChevronLeft, Save, Lock, User, Mail, Building, Camera } from 'lucide-react';
+import { ChevronLeft, Save, Lock, User, Mail, Building, Camera, Loader2 } from 'lucide-react';
 import ProfileDropdown from '@/components/ProfileDropdown';
+import { useAuth } from '@/components/AuthProvider';
 
 export default function ProfilePage() {
+    const { user, login } = useAuth(); // login behaves as 'updateUser' essentially
     const [isLoading, setIsLoading] = useState(false);
+    const [isUploading, setIsUploading] = useState(false);
+    const fileInputRef = useRef<HTMLInputElement>(null);
 
-    // Mock user data
     const [formData, setFormData] = useState({
-        firstName: 'Admin',
-        lastName: 'User',
-        email: 'admin@tlab.com',
-        role: 'Administrator',
-        department: 'IT / Engineering',
-        bio: 'Senior System Administrator responsible for platform management and content oversight.',
+        firstName: '',
+        lastName: '',
+        email: '',
+        role: '',
+        department: '',
+        bio: '',
         currentPassword: '',
         newPassword: '',
         confirmPassword: ''
     });
+
+    useEffect(() => {
+        if (user) {
+            setFormData(prev => ({
+                ...prev,
+                firstName: user.name?.split(' ')[0] || '',
+                lastName: user.name?.split(' ').slice(1).join(' ') || '',
+                email: user.email || '',
+                role: user.role || '',
+                department: (user as any).department || 'General',
+                bio: (user as any).bio || '',
+            }));
+        }
+    }, [user]);
 
     const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => {
         const { name, value } = e.target;
         setFormData(prev => ({ ...prev, [name]: value }));
     };
 
+    const handleImageUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+        const file = e.target.files?.[0];
+        if (!file) return;
+
+        setIsUploading(true);
+        const formData = new FormData();
+        formData.append('file', file);
+        if (user?.id) formData.append('userId', user.id);
+
+        try {
+            const res = await fetch('/api/users/profile/image', {
+                method: 'POST',
+                body: formData
+            });
+
+            if (res.ok) {
+                const data = await res.json();
+                // Refresh user context to show new image
+                // Assuming login() triggers a fetchUser internally
+                login('');
+                alert('Profile photo updated!');
+            } else {
+                alert('Failed to upload image');
+            }
+        } catch (error) {
+            console.error(error);
+            alert('Error uploading image');
+        } finally {
+            setIsUploading(false);
+        }
+    };
+
     const handleSave = async (e: React.FormEvent) => {
         e.preventDefault();
         setIsLoading(true);
 
-        // Simulate API call
-        await new Promise(resolve => setTimeout(resolve, 1500));
+        // TODO: Implement actual profile update API call here
+        await new Promise(resolve => setTimeout(resolve, 1000));
 
         setIsLoading(false);
         alert('Profile updated successfully!');
     };
+
+    if (!user) return <div className="min-h-screen bg-slate-50 flex items-center justify-center"><Loader2 className="h-8 w-8 animate-spin text-cyan-600" /></div>;
 
     return (
         <div className="min-h-screen bg-slate-50 pb-20">
@@ -62,16 +113,29 @@ export default function ProfilePage() {
                     {/* Left Column: Profile Card */}
                     <div className="md:col-span-1 space-y-6">
                         <div className="bg-white rounded-2xl shadow-sm border border-slate-200 p-6 text-center">
-                            <div className="relative w-32 h-32 mx-auto mb-4 group cursor-pointer">
-                                <div className="w-full h-full rounded-full bg-gradient-to-br from-cyan-500 to-blue-600 flex items-center justify-center text-4xl font-bold text-white border-4 border-white shadow-lg overflow-hidden">
-                                    {formData.firstName.charAt(0)}
+                            <div className="relative w-32 h-32 mx-auto mb-4 group cursor-pointer" onClick={() => fileInputRef.current?.click()}>
+                                <input
+                                    type="file"
+                                    ref={fileInputRef}
+                                    className="hidden"
+                                    accept="image/*"
+                                    onChange={handleImageUpload}
+                                />
+                                <div className="w-full h-full rounded-full bg-gradient-to-br from-cyan-500 to-blue-600 flex items-center justify-center text-4xl font-bold text-white border-4 border-white shadow-lg overflow-hidden relative">
+                                    {isUploading ? (
+                                        <Loader2 className="h-8 w-8 animate-spin" />
+                                    ) : user.image ? (
+                                        <img src={user.image} alt="Profile" className="w-full h-full object-cover" />
+                                    ) : (
+                                        user.name?.charAt(0) || 'U'
+                                    )}
                                 </div>
                                 <div className="absolute inset-0 bg-black/40 rounded-full flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity">
                                     <Camera className="h-8 w-8 text-white" />
                                 </div>
                             </div>
-                            <h2 className="text-xl font-bold text-slate-900">{formData.firstName} {formData.lastName}</h2>
-                            <p className="text-sm text-slate-500 mb-4">{formData.role}</p>
+                            <h2 className="text-xl font-bold text-slate-900">{user.name}</h2>
+                            <p className="text-sm text-slate-500 mb-4">{user.role}</p>
 
                             <div className="flex justify-center gap-2">
                                 <span className="px-3 py-1 bg-cyan-50 text-cyan-700 text-xs font-bold rounded-full border border-cyan-100">
@@ -143,8 +207,9 @@ export default function ProfilePage() {
                                         type="email"
                                         name="email"
                                         value={formData.email}
-                                        onChange={handleChange}
-                                        className="w-full pl-10 pr-4 py-2 border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-cyan-500"
+                                        readOnly
+                                        disabled
+                                        className="w-full pl-10 pr-4 py-2 border border-slate-200 rounded-lg bg-slate-50 text-slate-500 cursor-not-allowed focus:outline-none"
                                     />
                                 </div>
                             </div>

@@ -61,7 +61,7 @@ export default function CoachPage() {
                     </Link>
 
                     {/* Concept Coach */}
-                    <Link href="#" className="group">
+                    <Link href="/coach/concept" className="group">
                         <div className="bg-white rounded-2xl p-8 shadow-lg hover:shadow-xl transition-all border border-slate-100 h-full flex flex-col items-center text-center relative overflow-hidden group-hover:-translate-y-1">
                             <div className="h-20 w-20 bg-purple-50 text-purple-600 rounded-full flex items-center justify-center mb-6 group-hover:scale-110 transition-transform">
                                 <Brain className="h-10 w-10" />
@@ -77,7 +77,7 @@ export default function CoachPage() {
                     </Link>
 
                     {/* AI Voice Assistance */}
-                    <Link href="#" className="group">
+                    <Link href="/coach/roleplay" className="group">
                         <div className="bg-white rounded-2xl p-8 shadow-lg hover:shadow-xl transition-all border border-slate-100 h-full flex flex-col items-center text-center relative overflow-hidden group-hover:-translate-y-1">
                             <div className="h-20 w-20 bg-rose-50 text-rose-600 rounded-full flex items-center justify-center mb-6 group-hover:scale-110 transition-transform">
                                 <Mic className="h-10 w-10" />

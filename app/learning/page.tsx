@@ -20,6 +20,8 @@ import {
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import ProfileDropdown from '@/components/ProfileDropdown';
+import { useAuth } from '@/components/AuthProvider';
+import { getMyCourses } from '@/app/actions/courses';
 
 export default function MyLearningPage() {
     const [activeTab, setActiveTab] = useState<'courses' | 'library'>('courses');
@@ -27,34 +29,45 @@ export default function MyLearningPage() {
     const [searchQuery, setSearchQuery] = useState('');
     const [isBrowseMode, setIsBrowseMode] = useState(false);
 
-    // Mock User State (In real app, this comes from auth context)
-    // Mock User State (In real app, this comes from auth context)
-    const [myLibraryIds, setMyLibraryIds] = useState<string[]>(['b1', 'b2']);
-    const [myCourseIds, setMyCourseIds] = useState<string[]>(['c1', 'c2', 'c3']);
+    const { user } = useAuth();
+    const [myLibraryIds, setMyLibraryIds] = useState<string[]>([]);
+    const [myCourseIds, setMyCourseIds] = useState<string[]>([]);
     const [allCourses, setAllCourses] = useState<any[]>(COURSES);
+    const [enrolledCourses, setEnrolledCourses] = useState<any[]>([]);
 
     useEffect(() => {
-        // Fetch real courses from API
-        const fetchCourses = async () => {
+        // Fetch real courses from API (Catalog)
+        const fetchCatalog = async () => {
             try {
                 const res = await fetch('/api/courses');
                 if (res.ok) {
                     const data = await res.json();
-                    setAllCourses(data); // Replace static courses with DB courses
-                    // For demo, assume user owns all courses or use a logic
-                    const allIds = data.map((c: any) => c.id);
-                    setMyCourseIds(allIds);
+                    setAllCourses(data);
                 }
             } catch (error) {
-                console.error("Failed to fetch courses", error);
+                console.error("Failed to fetch catalog", error);
             }
         };
 
-        fetchCourses();
+        fetchCatalog();
     }, []);
 
+    useEffect(() => {
+        const fetchEnrollments = async () => {
+            if (user?.id) {
+                const res = await getMyCourses(user.id);
+                if (res.success && res.data) {
+                    setEnrolledCourses(res.data);
+                    setMyCourseIds(res.data.map((c: any) => c.id));
+                }
+            }
+        };
+        fetchEnrollments();
+    }, [user]);
+
     // Derived Data
-    const myCourses = allCourses.filter(c => myCourseIds.includes(c.id));
+    // Use enrolledCourses if available, otherwise filter allCourses (fallback)
+    const myCourses = enrolledCourses.length > 0 ? enrolledCourses : allCourses.filter(c => myCourseIds.includes(c.id));
     const myBooks = BOOKS.filter(b => myLibraryIds.includes(b.id));
 
     // Get Categories with Counts
@@ -235,7 +248,7 @@ export default function MyLearningPage() {
                                                         <img src={item.thumbnail || item.cover} className="w-full h-full object-cover" />
                                                     </div>
                                                     <div className="flex-1 min-w-0">
-                                                        <h4 className="font-bold text-slate-900 truncate">{item.title}</h4>
+                                                        <h4 className="text-xl font-bold text-slate-900 truncate">{item.title}</h4>
                                                         <p className="text-xs text-slate-500 mb-2">{item.category}</p>
                                                         <button
                                                             onClick={() => handleAddToLibrary(item.id)}
@@ -276,15 +289,8 @@ export default function MyLearningPage() {
                                                     )}>
                                                         {item.category}
                                                     </span>
-                                                    <button
-                                                        onClick={(e) => handleDeleteCourse(e, item.id, item.title)}
-                                                        className="text-slate-400 hover:text-red-500 transition-colors p-1"
-                                                        title="Remove from collection"
-                                                    >
-                                                        <Trash2 className="h-4 w-4" />
-                                                    </button>
                                                 </div>
-                                                <h3 className="text-lg font-bold text-slate-900 mb-1">{item.title}</h3>
+                                                <h3 className="text-2xl font-bold text-slate-900 mb-1">{item.title}</h3>
                                                 <p className="text-xs text-slate-500 mb-3 line-clamp-1">
                                                     {activeTab === 'courses' ? `${item.totalModules} Modules • 2h 15m` : `${item.author} • ${item.readTime} read`}
                                                 </p>

@@ -179,10 +179,26 @@ export default function AdminUploadPage() {
             if (coverFile) {
                 const coverFormData = new FormData();
                 coverFormData.append('file', coverFile);
-                const imgRes = await fetch('/api/upload/image', { method: 'POST', body: coverFormData });
-                const imgData = await imgRes.json();
-                if (imgData.success) {
-                    thumbnailUrl = imgData.url;
+
+                try {
+                    const imgRes = await fetch('/api/upload/image', { method: 'POST', body: coverFormData });
+
+                    if (!imgRes.ok) {
+                        const errData = await imgRes.json();
+                        throw new Error(errData.error || "Failed to upload cover image");
+                    }
+
+                    const imgData = await imgRes.json();
+                    if (imgData.url) {
+                        thumbnailUrl = imgData.url;
+                    } else {
+                        throw new Error("Invalid response from server during cover upload");
+                    }
+                } catch (err: any) {
+                    console.error("Cover Upload Failed:", err);
+                    setError(`Cover Image Upload Failed: ${err.message}`);
+                    setStatus('idle');
+                    return;
                 }
             }
 

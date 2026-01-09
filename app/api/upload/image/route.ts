@@ -41,7 +41,7 @@ export async function POST(req: NextRequest) {
 
         // Return URL
         const fileUrl = `/uploads/${filename}`;
-        return NextResponse.json({ url: fileUrl });
+        return NextResponse.json({ success: true, url: fileUrl });
 
     } catch (error) {
         console.error('Upload Error:', error);

@@ -1,14 +1,15 @@
 'use client';
 
 import { useState, useEffect, useRef } from 'react';
-import { Sparkles } from 'lucide-react';
+import { Sparkles, Presentation } from 'lucide-react';
 
 interface TextSelectionHandlerProps {
     children: React.ReactNode;
     onExplain: (text: string) => void;
+    onVisualize: (text: string) => void;
 }
 
-export default function TextSelectionHandler({ children, onExplain }: TextSelectionHandlerProps) {
+export default function TextSelectionHandler({ children, onExplain, onVisualize }: TextSelectionHandlerProps) {
     const [selection, setSelection] = useState<{ text: string; x: number; y: number } | null>(null);
     const containerRef = useRef<HTMLDivElement>(null);
 
@@ -55,8 +56,7 @@ export default function TextSelectionHandler({ children, onExplain }: TextSelect
             {children}
 
             {selection && (
-                <button
-                    onClick={handleExplainClick}
+                <div
                     style={{
                         position: 'fixed',
                         left: selection.x,
@@ -64,11 +64,31 @@ export default function TextSelectionHandler({ children, onExplain }: TextSelect
                         transform: 'translate(-50%, -100%)',
                         zIndex: 50
                     }}
-                    className="flex items-center gap-2 bg-slate-900 text-white px-3 py-1.5 rounded-full shadow-lg border border-slate-700 animate-in fade-in zoom-in duration-200 hover:bg-slate-800 hover:scale-105 transition-all text-sm font-medium"
+                    className="flex items-center gap-1 bg-white p-1 rounded-full shadow-lg border border-slate-200 animate-in fade-in zoom-in duration-200"
                 >
-                    <Sparkles className="h-4 w-4 text-cyan-400" />
-                    Explain
-                </button>
+                    <button
+                        onClick={handleExplainClick}
+                        className="flex items-center gap-1.5 px-3 py-1.5 rounded-full hover:bg-slate-100 transition-colors text-sm font-medium text-slate-700"
+                    >
+                        <Sparkles className="h-3.5 w-3.5 text-cyan-500" />
+                        Explain
+                    </button>
+                    <div className="w-px h-4 bg-slate-200" />
+                    <button
+                        onClick={(e) => {
+                            e.stopPropagation();
+                            if (selection) {
+                                onVisualize(selection.text);
+                                window.getSelection()?.removeAllRanges();
+                                setSelection(null);
+                            }
+                        }}
+                        className="flex items-center gap-1.5 px-3 py-1.5 rounded-full hover:bg-slate-100 transition-colors text-sm font-medium text-slate-700"
+                    >
+                        <Presentation className="h-3.5 w-3.5 text-purple-500" />
+                        Visualise
+                    </button>
+                </div>
             )}
         </div>
     );

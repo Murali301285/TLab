@@ -4,6 +4,7 @@ import type { NextConfig } from "next";
 
 const nextConfig: NextConfig = {
   images: {
+    unoptimized: true, // Disabled optimization to fix 500 errors on Windows Server
     remotePatterns: [
       {
         protocol: 'https',
@@ -16,6 +17,7 @@ const nextConfig: NextConfig = {
       bodySizeLimit: '100mb',
     },
   },
+  output: 'standalone',
 };
 
 export default nextConfig;

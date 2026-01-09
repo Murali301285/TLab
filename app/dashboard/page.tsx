@@ -5,20 +5,24 @@ import Image from 'next/image';
 import Link from 'next/link';
 import { Search, Bell, BookOpen, Clock, Award, ArrowRight, Bot, Users, FileText, Settings, UserCog } from 'lucide-react';
 import ProfileDropdown from '@/components/ProfileDropdown';
+import { useAuth } from '@/components/AuthProvider';
 import { getMyCourses, getRecentLearning } from '@/app/actions/courses';
 
 export default function Dashboard() {
+    const { user, isLoading: authLoading } = useAuth();
     const [courses, setCourses] = useState<any[]>([]);
     const [recentCourses, setRecentCourses] = useState<any[]>([]);
-    const [isLoading, setIsLoading] = useState(true);
+    const [dataLoading, setDataLoading] = useState(false);
 
     useEffect(() => {
         async function loadCourses() {
+            if (!user?.id) return;
+
+            setDataLoading(true);
             try {
-                // Hardcoded userId "u1" for demo purposes
                 const [myCoursesRes, recentRes] = await Promise.all([
-                    getMyCourses("u1"),
-                    getRecentLearning("u1")
+                    getMyCourses(user.id),
+                    getRecentLearning(user.id)
                 ]);
 
                 if (myCoursesRes.success) {
@@ -30,11 +34,18 @@ export default function Dashboard() {
             } catch (e) {
                 console.error(e);
             } finally {
-                setIsLoading(false);
+                setDataLoading(false);
             }
         }
-        loadCourses();
-    }, []);
+
+        if (user) {
+            loadCourses();
+        }
+    }, [user]);
+
+    if (authLoading) return <div className="min-h-screen bg-slate-50 flex items-center justify-center"><div className="animate-spin rounded-full h-8 w-8 border-b-2 border-cyan-600"></div></div>;
+
+    const isAdmin = user?.role === 'admin';
 
     return (
         <div className="min-h-screen bg-slate-50 pb-20">
@@ -79,57 +90,41 @@ export default function Dashboard() {
                         <h1 className="text-3xl md:text-4xl font-bold text-slate-900 mb-2">
                             {(() => {
                                 const hour = new Date().getHours();
-                                if (hour < 12) return "Good Morning, Admin";
-                                if (hour < 18) return "Good Afternoon, Admin";
-                                return "Good Evening, Admin";
+                                const greeting = hour < 12 ? "Good Morning" : hour < 18 ? "Good Afternoon" : "Good Evening";
+                                return `${greeting}, ${user?.name || 'User'}`;
                             })()}
                         </h1>
                         <p className="text-slate-600 text-lg font-medium">
-                            Ready to continue your learning journey?
+                            {isAdmin ? "Manage your platform and users." : "Ready to continue your learning journey?"}
                         </p>
                     </div>
                 </div>
             </div>
 
             <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 -mt-8 relative z-10">
-                {/* Quick Stats */}
+                {/* Quick Stats - Only for Non-Admins */}
+                {/* Quick Stats - Visible to All for Design Verification */}
                 <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-10">
-                    <div className="glass-card p-6 rounded-xl flex items-center gap-4 bg-white shadow-sm">
-                        <div className="p-3 bg-blue-100 rounded-lg text-blue-600">
-                            <BookOpen className="h-6 w-6" />
-                        </div>
-                        <div>
-                            <p className="text-sm text-slate-500 font-medium">Assigned Courses</p>
-                            <p className="text-2xl font-bold text-slate-900">{courses.length}</p>
-                        </div>
+                    <Link href="/learning" className="glass-card py-8 px-6 rounded-xl flex flex-col items-center justify-center bg-white shadow-sm hover:shadow-md transition-all text-center border border-slate-100">
+                        <p className="text-xs font-bold text-slate-400 uppercase tracking-[0.2em] mb-2">Assigned Courses</p>
+                        <p className="text-4xl font-extrabold text-slate-900">{courses.length}</p>
+                    </Link>
+                    <div className="glass-card py-8 px-6 rounded-xl flex flex-col items-center justify-center bg-white shadow-sm text-center border border-slate-100">
+                        <p className="text-xs font-bold text-slate-400 uppercase tracking-[0.2em] mb-2">Learning Hours</p>
+                        <p className="text-4xl font-extrabold text-slate-900">0</p>
                     </div>
-                    <div className="glass-card p-6 rounded-xl flex items-center gap-4 bg-white shadow-sm">
-                        <div className="p-3 bg-purple-100 rounded-lg text-purple-600">
-                            <Clock className="h-6 w-6" />
-                        </div>
-                        <div>
-                            <p className="text-sm text-slate-500 font-medium">Learning Hours</p>
-                            <p className="text-2xl font-bold text-slate-900">0</p>
-                        </div>
-                    </div>
-                    <div className="glass-card p-6 rounded-xl flex items-center gap-4 bg-white shadow-sm">
-                        <div className="p-3 bg-orange-100 rounded-lg text-orange-600">
-                            <Award className="h-6 w-6" />
-                        </div>
-                        <div>
-                            <p className="text-sm text-slate-500 font-medium">Certificates</p>
-                            <p className="text-2xl font-bold text-slate-900">0</p>
-                        </div>
+                    <div className="glass-card py-8 px-6 rounded-xl flex flex-col items-center justify-center bg-white shadow-sm text-center border border-slate-100">
+                        <p className="text-xs font-bold text-slate-400 uppercase tracking-[0.2em] mb-2">Certificates</p>
+                        <p className="text-4xl font-extrabold text-slate-900">0</p>
                     </div>
                 </div>
 
-                {/* Main Modules Navigation (Kept for Access) */}
                 {/* Main Modules Navigation */}
                 <div className="mb-10 space-y-6">
-                    {/* Row 1: Learner Features */}
+                    {/* User Features */}
                     <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
                         <Link href="/learning" className="group">
-                            <div className="glass-card p-6 rounded-xl border border-slate-200 hover:border-cyan-300 hover:shadow-lg transition-all h-full bg-white flex flex-col items-start">
+                            <div className="glass-card p-6 rounded-xl border border-slate-200 hover:border-cyan-300 hover:shadow-lg transition-all h-full bg-white flex flex-col items-center text-center">
                                 <div className="p-3 bg-cyan-50 rounded-lg mb-4 group-hover:bg-cyan-100 transition-colors">
                                     <BookOpen className="h-8 w-8 text-cyan-600" />
                                 </div>
@@ -144,7 +139,7 @@ export default function Dashboard() {
                         </Link>
 
                         <Link href="/mentors" className="group">
-                            <div className="glass-card p-6 rounded-xl border border-slate-200 hover:border-purple-300 hover:shadow-lg transition-all h-full bg-white flex flex-col items-start">
+                            <div className="glass-card p-6 rounded-xl border border-slate-200 hover:border-purple-300 hover:shadow-lg transition-all h-full bg-white flex flex-col items-center text-center">
                                 <div className="p-3 bg-purple-50 rounded-lg mb-4 group-hover:bg-purple-100 transition-colors">
                                     <Users className="h-8 w-8 text-purple-600" />
                                 </div>
@@ -159,11 +154,11 @@ export default function Dashboard() {
                         </Link>
 
                         <Link href="/coach" className="group">
-                            <div className="glass-card p-6 rounded-xl border border-slate-200 hover:border-amber-300 hover:shadow-lg transition-all h-full bg-white flex flex-col items-start">
+                            <div className="glass-card p-6 rounded-xl border border-slate-200 hover:border-amber-300 hover:shadow-lg transition-all h-full bg-white flex flex-col items-center text-center">
                                 <div className="p-3 bg-amber-50 rounded-lg mb-4 group-hover:bg-amber-100 transition-colors">
                                     <Bot className="h-8 w-8 text-amber-600" />
                                 </div>
-                                <h3 className="text-xl font-bold text-slate-900 group-hover:text-amber-600 mb-2">AI Coach</h3>
+                                <h3 className="text-xl font-bold text-slate-900 group-hover:text-amber-600 mb-2">Coaching Section</h3>
                                 <p className="text-sm text-slate-500 mb-4 flex-1">
                                     Enhance skills with Language, Concept, and AI Voice coaching.
                                 </p>
@@ -174,53 +169,55 @@ export default function Dashboard() {
                         </Link>
                     </div>
 
-                    {/* Row 2: Admin / Management */}
-                    <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-                        <Link href="/admin/upload" className="group">
-                            <div className="glass-card p-6 rounded-xl border border-slate-200 hover:border-blue-300 hover:shadow-lg transition-all h-full bg-white flex flex-col items-start">
-                                <div className="p-3 bg-blue-50 rounded-lg mb-4 group-hover:bg-blue-100 transition-colors">
-                                    <FileText className="h-8 w-8 text-blue-600" />
+                    {/* Admin Features */}
+                    {isAdmin && (
+                        <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+                            <Link href="/admin/upload" className="group">
+                                <div className="glass-card p-6 rounded-xl border border-slate-200 hover:border-blue-300 hover:shadow-lg transition-all h-full bg-white flex flex-col items-center text-center">
+                                    <div className="p-3 bg-blue-50 rounded-lg mb-4 group-hover:bg-blue-100 transition-colors">
+                                        <FileText className="h-8 w-8 text-blue-600" />
+                                    </div>
+                                    <h3 className="text-xl font-bold text-slate-900 group-hover:text-blue-600 mb-2">Content Management</h3>
+                                    <p className="text-sm text-slate-500 mb-4 flex-1">
+                                        Upload new content, extract chapters, and generate AI study aids.
+                                    </p>
+                                    <span className="text-blue-600 font-semibold text-sm flex items-center gap-1 group-hover:translate-x-1 transition-transform">
+                                        Manage Content <ArrowRight className="h-4 w-4" />
+                                    </span>
                                 </div>
-                                <h3 className="text-xl font-bold text-slate-900 group-hover:text-blue-600 mb-2">Content Master</h3>
-                                <p className="text-sm text-slate-500 mb-4 flex-1">
-                                    Upload new content, extract chapters, and generate AI study aids.
-                                </p>
-                                <span className="text-blue-600 font-semibold text-sm flex items-center gap-1 group-hover:translate-x-1 transition-transform">
-                                    Manage Content <ArrowRight className="h-4 w-4" />
-                                </span>
-                            </div>
-                        </Link>
+                            </Link>
 
-                        <Link href="/admin/users" className="group">
-                            <div className="glass-card p-6 rounded-xl border border-slate-200 hover:border-green-300 hover:shadow-lg transition-all h-full bg-white flex flex-col items-start">
-                                <div className="p-3 bg-green-50 rounded-lg mb-4 group-hover:bg-green-100 transition-colors">
-                                    <UserCog className="h-8 w-8 text-green-600" />
+                            <Link href="/admin/users" className="group">
+                                <div className="glass-card p-6 rounded-xl border border-slate-200 hover:border-green-300 hover:shadow-lg transition-all h-full bg-white flex flex-col items-center text-center">
+                                    <div className="p-3 bg-green-50 rounded-lg mb-4 group-hover:bg-green-100 transition-colors">
+                                        <UserCog className="h-8 w-8 text-green-600" />
+                                    </div>
+                                    <h3 className="text-xl font-bold text-slate-900 group-hover:text-green-600 mb-2">User Management</h3>
+                                    <p className="text-sm text-slate-500 mb-4 flex-1">
+                                        Manage employees, assign courses, and track learning progress.
+                                    </p>
+                                    <span className="text-green-600 font-semibold text-sm flex items-center gap-1 group-hover:translate-x-1 transition-transform">
+                                        Manage Users <ArrowRight className="h-4 w-4" />
+                                    </span>
                                 </div>
-                                <h3 className="text-xl font-bold text-slate-900 group-hover:text-green-600 mb-2">User Management</h3>
-                                <p className="text-sm text-slate-500 mb-4 flex-1">
-                                    Manage employees, assign courses, and track learning progress.
-                                </p>
-                                <span className="text-green-600 font-semibold text-sm flex items-center gap-1 group-hover:translate-x-1 transition-transform">
-                                    Manage Users <ArrowRight className="h-4 w-4" />
-                                </span>
-                            </div>
-                        </Link>
+                            </Link>
 
-                        <Link href="/admin/configurations" className="group">
-                            <div className="glass-card p-6 rounded-xl border border-slate-200 hover:border-slate-300 hover:shadow-lg transition-all h-full bg-white flex flex-col items-start">
-                                <div className="p-3 bg-slate-100 rounded-lg mb-4 group-hover:bg-slate-200 transition-colors">
-                                    <Settings className="h-8 w-8 text-slate-600" />
+                            <Link href="/admin/configurations" className="group">
+                                <div className="glass-card p-6 rounded-xl border border-slate-200 hover:border-slate-300 hover:shadow-lg transition-all h-full bg-white flex flex-col items-center text-center">
+                                    <div className="p-3 bg-slate-100 rounded-lg mb-4 group-hover:bg-slate-200 transition-colors">
+                                        <Settings className="h-8 w-8 text-slate-600" />
+                                    </div>
+                                    <h3 className="text-xl font-bold text-slate-900 group-hover:text-slate-700 mb-2">Configuration</h3>
+                                    <p className="text-sm text-slate-500 mb-4 flex-1">
+                                        System settings, integration preferences, and platform defaults.
+                                    </p>
+                                    <span className="text-slate-600 font-semibold text-sm flex items-center gap-1 group-hover:translate-x-1 transition-transform">
+                                        Configure <ArrowRight className="h-4 w-4" />
+                                    </span>
                                 </div>
-                                <h3 className="text-xl font-bold text-slate-900 group-hover:text-slate-700 mb-2">Configuration</h3>
-                                <p className="text-sm text-slate-500 mb-4 flex-1">
-                                    System settings, integration preferences, and platform defaults.
-                                </p>
-                                <span className="text-slate-600 font-semibold text-sm flex items-center gap-1 group-hover:translate-x-1 transition-transform">
-                                    Configure <ArrowRight className="h-4 w-4" />
-                                </span>
-                            </div>
-                        </Link>
-                    </div>
+                            </Link>
+                        </div>
+                    )}
                 </div>
 
                 {/* Continue Learning */}
@@ -256,7 +253,7 @@ export default function Dashboard() {
                                         </div>
 
                                         <div className="p-5 flex-1 flex flex-col">
-                                            <h3 className="text-lg font-bold text-slate-900 mb-2 line-clamp-2 group-hover:text-cyan-600 transition-colors">
+                                            <h3 className="text-2xl font-bold text-slate-900 mb-2 line-clamp-2 group-hover:text-cyan-600 transition-colors">
                                                 {course.title}
                                             </h3>
                                             <p className="text-sm text-slate-500 mb-4 line-clamp-2 flex-1">

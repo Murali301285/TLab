@@ -11,12 +11,14 @@ export default function LoginPage() {
   const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
   const [error, setError] = useState('');
+  const [success, setSuccess] = useState(''); // New success state
   const [loading, setLoading] = useState(false);
+  const [isForgotPassword, setIsForgotPassword] = useState(false); // Toggle state
 
   const router = useRouter();
   const { login } = useAuth();
 
-  const handleSubmit = async (e: React.FormEvent) => {
+  const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
     setError('');
     setLoading(true);
@@ -44,6 +46,19 @@ export default function LoginPage() {
     }
   };
 
+  const handleForgotPassword = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setError('');
+    setSuccess('');
+    setLoading(true);
+
+    // Mock API call
+    setTimeout(() => {
+      setLoading(false);
+      setSuccess('If an account exists with this email, you will receive a password reset link shortly.');
+    }, 1500);
+  };
+
   return (
     <main className="min-h-screen flex items-center justify-center relative overflow-hidden bg-slate-50">
       {/* Background */}
@@ -60,10 +75,12 @@ export default function LoginPage() {
               <Image src="/assets/logo.png" alt="T-Lab" fill className="object-contain" />
             </div>
             <h1 className="text-2xl font-bold text-white tracking-tight">
-              Welcome Back
+              {isForgotPassword ? 'Reset Password' : 'Welcome Back'}
             </h1>
-            <p className="text-slate-400 text-sm mt-2">
-              Enter your credentials to access T-Lab
+            <p className="text-slate-400 text-sm mt-2 text-center">
+              {isForgotPassword
+                ? 'Enter your email to receive a reset link'
+                : 'Enter your credentials to access T-Lab'}
             </p>
           </div>
 
@@ -71,52 +88,111 @@ export default function LoginPage() {
           <div className="p-8">
             {error && (
               <div className="bg-red-50 text-red-600 p-3 rounded-lg text-sm mb-4 flex items-center gap-2">
-                <AlertCircle className="h-4 w-4" /> {error}
+                <AlertCircle className="h-4 w-4 shrink-0" /> {error}
+              </div>
+            )}
+            {success && (
+              <div className="bg-green-50 text-green-600 p-3 rounded-lg text-sm mb-4 flex items-start gap-2">
+                <div className="h-4 w-4 mt-0.5 shrink-0">✅</div>
+                <span>{success}</span>
               </div>
             )}
 
-            <form onSubmit={handleSubmit} className="space-y-4">
-              <div>
-                <label className="block text-sm font-medium text-slate-700 mb-1">Email Address</label>
-                <input
-                  type="email"
-                  required
-                  className="w-full px-4 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-cyan-500 outline-none"
-                  value={email}
-                  onChange={e => setEmail(e.target.value)}
-                  placeholder="username@email.com"
-                />
-              </div>
-
-              <div>
-                <label className="block text-sm font-medium text-slate-700 mb-1">Password</label>
-                <div className="relative">
+            {!isForgotPassword ? (
+              /* Login Form */
+              <form onSubmit={handleLogin} className="space-y-4">
+                <div>
+                  <label className="block text-sm font-medium text-slate-700 mb-1">Email Address</label>
                   <input
-                    type={showPassword ? "text" : "password"}
+                    type="email"
                     required
-                    className="w-full px-4 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-cyan-500 outline-none pr-10"
-                    value={password}
-                    onChange={e => setPassword(e.target.value)}
-                    placeholder="••••••••"
+                    className="w-full px-4 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-cyan-500 outline-none"
+                    value={email}
+                    onChange={e => setEmail(e.target.value)}
+                    placeholder="username@email.com"
                   />
-                  <button
-                    type="button"
-                    onClick={() => setShowPassword(!showPassword)}
-                    className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600"
-                  >
-                    {showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
-                  </button>
                 </div>
-              </div>
 
-              <button
-                type="submit"
-                disabled={loading}
-                className="w-full py-3 bg-slate-900 text-white rounded-lg font-bold hover:bg-slate-800 transition-colors flex justify-center items-center"
-              >
-                {loading ? <Loader2 className="h-5 w-5 animate-spin" /> : 'Log In'}
-              </button>
-            </form>
+                <div>
+                  <div className="flex items-center justify-between mb-1">
+                    <label className="block text-sm font-medium text-slate-700">Password</label>
+                  </div>
+                  <div className="relative">
+                    <input
+                      type={showPassword ? "text" : "password"}
+                      required
+                      className="w-full px-4 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-cyan-500 outline-none pr-10"
+                      value={password}
+                      onChange={e => setPassword(e.target.value)}
+                      placeholder="••••••••"
+                    />
+                    <button
+                      type="button"
+                      onClick={() => setShowPassword(!showPassword)}
+                      className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600"
+                    >
+                      {showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                    </button>
+                  </div>
+                  <div className="flex justify-end mt-1">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setIsForgotPassword(true);
+                        setError('');
+                        setSuccess('');
+                      }}
+                      className="text-xs font-medium text-cyan-600 hover:text-cyan-700"
+                    >
+                      Forgot Password?
+                    </button>
+                  </div>
+                </div>
+
+                <button
+                  type="submit"
+                  disabled={loading}
+                  className="w-full py-3 bg-slate-900 text-white rounded-lg font-bold hover:bg-slate-800 transition-colors flex justify-center items-center"
+                >
+                  {loading ? <Loader2 className="h-5 w-5 animate-spin" /> : 'Log In'}
+                </button>
+              </form>
+            ) : (
+              /* Forgot Password Form */
+              <form onSubmit={handleForgotPassword} className="space-y-4 animate-in fade-in slide-in-from-right-4 duration-300">
+                <div>
+                  <label className="block text-sm font-medium text-slate-700 mb-1">Email Address</label>
+                  <input
+                    type="email"
+                    required
+                    className="w-full px-4 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-cyan-500 outline-none"
+                    value={email}
+                    onChange={e => setEmail(e.target.value)}
+                    placeholder="username@email.com"
+                  />
+                </div>
+
+                <button
+                  type="submit"
+                  disabled={loading}
+                  className="w-full py-3 bg-cyan-600 text-white rounded-lg font-bold hover:bg-cyan-700 transition-colors flex justify-center items-center shadow-lg shadow-cyan-500/20"
+                >
+                  {loading ? <Loader2 className="h-5 w-5 animate-spin" /> : 'Send Reset Link'}
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => {
+                    setIsForgotPassword(false);
+                    setError('');
+                    setSuccess('');
+                  }}
+                  className="w-full py-2 text-slate-500 text-sm hover:text-slate-800 transition-colors"
+                >
+                  Back to Login
+                </button>
+              </form>
+            )}
           </div>
         </div>
       </div>

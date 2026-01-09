@@ -40,7 +40,7 @@ export async function POST(req: NextRequest) {
         // Set Cookie
         response.cookies.set('auth-token', token, {
             httpOnly: true,
-            secure: process.env.NODE_ENV === 'production',
+            secure: false, // Changed to false to allow HTTP (IP Address Access)
             sameSite: 'lax',
             path: '/',
             maxAge: 60 * 60 * 24 // 24 hours

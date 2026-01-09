@@ -5,7 +5,7 @@ import { PrismaClient } from '@prisma/client';
 export async function POST(req: NextRequest) {
     try {
         const body = await req.json();
-        const { type, topicId, courseId, context, topicTitle } = body; // context/topicTitle might be passed for ad-hoc requests
+        const { type, topicId, courseId, context, topicTitle, questionCount } = body; // context/topicTitle might be passed for ad-hoc requests
 
         const apiKey = process.env.GROQ_API_KEY;
         if (!apiKey) {
@@ -74,15 +74,24 @@ export async function POST(req: NextRequest) {
             case 'smart_notes': // The main content view
             case 'initial_content':
                 systemPrompt = `You are an expert professor. Create comprehensive, engaging "Smart Notes" for the provided topic based *strictly* on the context.
-                styles: Use HTML formatting (<h3>, <p>, <ul>, <li>, <strong>).
+                styles: Use **Markdown** formatting. NO HTML tags. NO Emojis.
                 Structure:
+                - Use # (H1) for the Main Topic.
+                - Use ## (H2) for Key Sections.
+                - Use ### (H3) for sub-sections.
+                - Use **Bold** for key terms.
+                - Use *Bullet points* for lists.
+                - Use > for important quotes or takeaways.
+                - Separate paragraphs with double newlines.
+                
+                Content Requirements:
                 - Introduction
                 - Key Concepts (Bullet points)
-                - Detailed Analysis
+                - Detailed Analysis (Broken into H2/H3 sections)
                 - Real-world Application
-                Include emoji where appropriate to make it fun.
-                Return ONLY the HTML string.`;
-                userPrompt = `Context: ${safeContext}\n\nWrite Smart Notes for: ${topic?.title || topicTitle}`;
+                
+                IMPORTANT: Do NOT use Emojis. Do NOT use HTML tags (like <h3>, <p>, etc). Return ONLY valid Markdown string.`;
+                userPrompt = `Context: ${safeContext}\n\nWrite Smart Notes (in Markdown) for: ${topic?.title || topicTitle}`;
                 break;
 
             case 'summary':
@@ -90,7 +99,8 @@ export async function POST(req: NextRequest) {
                 break;
 
             case 'quiz':
-                systemPrompt = `Create a multiple-choice quiz (3 questions).
+                const qCount = questionCount || 3;
+                systemPrompt = `Create a multiple-choice quiz (${qCount} questions).
                 Format: [{"question": "...", "options": ["..."], "correctAnswer": 0}]
                 ${jsonInstruction}`;
                 break;
@@ -104,6 +114,16 @@ export async function POST(req: NextRequest) {
             case 'mindmap':
                 systemPrompt = `You are a Mermaid.js expert. Create a mindmap for the topic.
                 Return ONLY the raw Mermaid syntax starting with 'mindmap'.
+                
+                CRITICAL: The mindmap MUST have exactly ONE root node.
+                Structure:
+                mindmap
+                  root((Main Topic))
+                    Branch 1
+                      Leaf A
+                    Branch 2
+                      Leaf B
+
                 Do not include markdown code blocks (\`\`\`mermaid) or conversational text.
                 Do not use special characters in node labels.`;
                 break;
@@ -111,6 +131,29 @@ export async function POST(req: NextRequest) {
             case 'explain':
                 systemPrompt = `Explain the selected term clearly in 2 sentences.`;
                 userPrompt = `Context: ${safeContext}\n\nExplain term: ${topicTitle}`;
+                break;
+
+            case 'podcast':
+                systemPrompt = `You are a scriptwriter for an educational podcast. Create a dialogue between a Host (curious) and an Expert (knowledgeable).
+                Format: [{"speaker": "Host", "text": "..."}, {"speaker": "Expert", "text": "..."}]
+                Keep it engaging, conversational, and under 5 minutes reading time.
+                ${jsonInstruction}`;
+                break;
+
+            case 'simplification':
+                const analogyInfo = (body.analogy && body.analogy !== 'General') ? body.analogy : null;
+                const analogyPrompt = analogyInfo
+                    ? `Explain this strictly using an Analogy/Metaphor related to "${analogyInfo}".`
+                    : `Explain this using a simple real-world analogy (e.g. Pizza delivery, Library, Traffic).`;
+
+                systemPrompt = `You are an expert at simplifying complex topics using analogies (ELI5).
+                Structure:
+                1. "The Analogy": The metaphor story.
+                2. "The Concept": How the analogy maps back to the technical topic.
+                Format: Return a simple markdown string with two sections. NO JSON symbols.
+                
+                Style: Make it fun and relatable.`;
+                userPrompt = `Context: ${safeContext}\n\n${analogyPrompt} Topic: ${topicTitle || "The Topic"}`;
                 break;
         }
 
@@ -150,6 +193,15 @@ export async function POST(req: NextRequest) {
                     generatedContent = generatedContent.replace(/```mermaid/g, '').replace(/```/g, '').trim();
                 }
                 updateData['mindMap'] = generatedContent;
+            } else if (type === 'podcast') {
+                generatedContent = generatedContent.replace(/```json/g, '').replace(/```/g, '').trim();
+                try {
+                    updateData['podcast'] = JSON.parse(generatedContent);
+                } catch (e) {
+                    console.error("Podcast JSON Parse Error", e);
+                }
+            } else if (type === 'simplification') {
+                updateData['simplification'] = generatedContent;
             }
 
             // Merge with existing content
@@ -162,7 +214,7 @@ export async function POST(req: NextRequest) {
         }
 
         // Check if we need to return parsed JSON or string
-        if ((type === 'quiz' || type === 'flashcards') && typeof generatedContent === 'string') {
+        if ((type === 'quiz' || type === 'flashcards' || type === 'podcast') && typeof generatedContent === 'string') {
             try {
                 return NextResponse.json({ content: JSON.parse(generatedContent) });
             } catch (e) {

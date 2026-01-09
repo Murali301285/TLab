@@ -20,6 +20,12 @@ export async function GET(req: NextRequest) {
                     select: {
                         courseId: true,
                     }
+                },
+                progress: {
+                    select: {
+                        topicId: true,
+                        completed: true
+                    }
                 }
             }
         });
@@ -28,7 +34,8 @@ export async function GET(req: NextRequest) {
             ...user,
             department: user.department || 'General',
             status: user.isActive ? 'active' : 'inactive',
-            assignedCourses: user.enrollments.map((e: any) => e.courseId)
+            assignedCourses: user.enrollments.map((e: any) => e.courseId),
+            completedTopics: user.progress.filter((p: any) => p.completed).map((p: any) => p.topicId)
         }));
 
         return NextResponse.json(transformedUsers);
