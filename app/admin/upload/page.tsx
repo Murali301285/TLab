@@ -19,12 +19,32 @@ import {
     Power,
     RefreshCw,
     Bot,
-    ChevronLeft
+    ChevronLeft,
+    Bell
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
+import ProfileDropdown from '@/components/ProfileDropdown';
 import { uploadChunk, finalizeUpload } from '@/app/actions/ingest';
 import { getAdminCourses, toggleCourseStatus, deleteCourse, updateCourse, getCategories } from '@/app/actions/courses';
 import { useRouter } from 'next/navigation';
+
+const CourseImage = ({ src, alt, className }: { src: string, alt: string, className?: string }) => {
+    const [imgSrc, setImgSrc] = useState(src);
+
+    useEffect(() => {
+        setImgSrc(src);
+    }, [src]);
+
+    return (
+        <Image
+            src={imgSrc}
+            alt={alt}
+            fill
+            className={className}
+            onError={() => setImgSrc('/assets/placeholder-course.png')}
+        />
+    );
+};
 
 export default function AdminUploadPage() {
     const router = useRouter();
@@ -37,6 +57,7 @@ export default function AdminUploadPage() {
     const [isLoadingCourses, setIsLoadingCourses] = useState(false);
     const [searchTerm, setSearchTerm] = useState('');
     const [selectedCategoryFilter, setSelectedCategoryFilter] = useState('All');
+    const [sortOption, setSortOption] = useState('latest');
 
     // Categories State
     const [categories, setCategories] = useState<any[]>([]);
@@ -54,6 +75,8 @@ export default function AdminUploadPage() {
     const [description, setDescription] = useState('');
     const [selectedCategory, setSelectedCategory] = useState<string>('');
     const [selectedSubCategory, setSelectedSubCategory] = useState<string>('');
+    const [isCompliance, setIsCompliance] = useState(false);
+    const [documentNumber, setDocumentNumber] = useState('');
     const [extractedData, setExtractedData] = useState<any>(null);
     const [error, setError] = useState<string | null>(null);
 
@@ -84,14 +107,85 @@ export default function AdminUploadPage() {
     };
 
     // Form Handlers
-    const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    // Old handleFileChange removed/merged above
+
+    // PDF.js worker setup
+    useEffect(() => {
+        const loadPdfWorker = async () => {
+            const pdfjs = await import('pdfjs-dist');
+            // Use local worker file from public folder for reliability
+            pdfjs.GlobalWorkerOptions.workerSrc = '/pdf.worker.min.mjs';
+        };
+        loadPdfWorker();
+    }, []);
+
+    // Compliance Effect: Auto-select Policy category
+    useEffect(() => {
+        if (isCompliance) {
+            const policyCat = categories.find(c => c.name.toLowerCase() === 'policy');
+            if (policyCat) {
+                setSelectedCategory(policyCat.id);
+            }
+            // Do NOT clear sub-category automatically so user can select one
+        }
+    }, [isCompliance, categories]);
+
+    const generateCoverFromPdf = async (file: File): Promise<File | null> => {
+        try {
+            const pdfjs = await import('pdfjs-dist');
+            const arrayBuffer = await file.arrayBuffer();
+            const loadingTask = pdfjs.getDocument(arrayBuffer);
+            const pdf = await loadingTask.promise;
+
+            const page = await pdf.getPage(1);
+            const viewport = page.getViewport({ scale: 1.5 }); // 1.5x scale for decent quality
+
+            const canvas = document.createElement('canvas');
+            const context = canvas.getContext('2d');
+            canvas.height = viewport.height;
+            canvas.width = viewport.width;
+
+            if (!context) return null;
+
+            await page.render({ canvasContext: context, viewport: viewport } as any).promise;
+
+            return new Promise((resolve) => {
+                canvas.toBlob((blob) => {
+                    if (blob) {
+                        const coverFile = new File([blob], "cover-generated.png", { type: "image/png" });
+                        resolve(coverFile);
+                    } else {
+                        resolve(null);
+                    }
+                }, 'image/png');
+            });
+
+        } catch (e) {
+            console.error("PDF Cover Gen Error", e);
+            return null;
+        }
+    };
+
+    const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
         if (e.target.files && e.target.files[0]) {
-            setFile(e.target.files[0]);
+            const selectedFile = e.target.files[0];
+            setFile(selectedFile);
             setError(null);
+
             // Auto-set title if empty
             if (!courseTitle) {
-                const name = e.target.files[0].name.replace(/\.[^/.]+$/, "");
+                const name = selectedFile.name.replace(/\.[^/.]+$/, "");
                 setCourseTitle(name.split('-').map(w => w.charAt(0).toUpperCase() + w.slice(1)).join(' '));
+            }
+
+            // Auto-Generate Cover for PDF
+            if (selectedFile.type === 'application/pdf') {
+                // Show temporary loading or status if needed (optional)
+                const generatedCover = await generateCoverFromPdf(selectedFile);
+                if (generatedCover) {
+                    setCoverFile(generatedCover);
+                    setCoverPreview(URL.createObjectURL(generatedCover));
+                }
             }
         }
     };
@@ -112,6 +206,8 @@ export default function AdminUploadPage() {
         setDescription('');
         setSelectedCategory('');
         setSelectedSubCategory('');
+        setIsCompliance(false);
+        setDocumentNumber('');
         setIsEditing(false);
         setEditingId(null);
         setStatus('idle');
@@ -125,6 +221,8 @@ export default function AdminUploadPage() {
         const name = course.title;
         setCourseTitle(name);
         setDescription(course.description || '');
+        setIsCompliance(course.isCompliance || false);
+        setDocumentNumber(course.documentNumber || '');
 
         // Map category properly
         if (course.subCategory) {
@@ -214,20 +312,52 @@ export default function AdminUploadPage() {
                     categoryName,
                     subCategoryId: selectedSubCategory || undefined,
                     thumbnailUrl,
-                    isActive: true
+                    isActive: true,
+                    isCompliance: isCompliance,
+                    documentNumber: isCompliance ? documentNumber : undefined
                 };
-
-                // Metadata update primarily
-                await updateCourse(editingId, updatedData);
-
-                // If user uploaded a new file, we could re-ingest, but currently that logic is skipped for simplicity 
-                // as it involves replacing chapters.
-                setStatus('success');
                 return;
             }
 
             // 3. New Upload (Chunked)
-            if (!file) return;
+            let finalThumbnailUrl = thumbnailUrl;
+
+            // 3a. Upload Cover Image First (if exists)
+            if (coverFile) {
+                try {
+                    setStatus('uploading');
+                    const imageFormData = new FormData();
+                    imageFormData.append('file', coverFile);
+
+                    const imgRes = await fetch('/api/upload/image', {
+                        method: 'POST',
+                        body: imageFormData
+                    });
+
+                    if (imgRes.ok) {
+                        const imgData = await imgRes.json();
+                        console.log("Cover upload response:", imgData);
+                        if (imgData.success) {
+                            finalThumbnailUrl = imgData.url;
+                            console.log("finalThumbnailUrl set to:", finalThumbnailUrl);
+                            if (imgData.debugPath) {
+                                console.log("[DEBUG] Server wrote to:", imgData.debugPath);
+                            }
+                        }
+                    }
+                } catch (err) {
+                    console.error("Cover upload failed", err);
+                    // Continue without cover or handle error
+                }
+            }
+
+            if (!file) {
+                // Check if it's metadata only (no file) which might happen in some cases, 
+                // but here we enforce file for new uploads unless we want to support "Manual Course"
+                // For now, let's assume file is required as per existing logic, or if only cover is there?
+                // Existing logic requires !file return.
+                if (!file) return;
+            }
 
             const CHUNK_SIZE = 2 * 1024 * 1024; // 2MB
             const totalChunks = Math.ceil(file.size / CHUNK_SIZE);
@@ -258,7 +388,9 @@ export default function AdminUploadPage() {
             finalFormData.append('subCategoryId', selectedSubCategory); // New Relation
             finalFormData.append('title', courseTitle);
             finalFormData.append('description', description);
-            finalFormData.append('thumbnailUrl', thumbnailUrl);
+            finalFormData.append('thumbnailUrl', finalThumbnailUrl || "");
+            finalFormData.append('isCompliance', isCompliance.toString());
+            if (isCompliance && documentNumber) finalFormData.append('documentNumber', documentNumber);
 
             const ingestRes = await finalizeUpload(finalFormData);
 
@@ -277,11 +409,20 @@ export default function AdminUploadPage() {
         }
     };
 
-    // Filter Helper
+    // Filter & Sort Helper
     const filteredCourses = adminCourses.filter(c =>
         (searchTerm === '' || c.title.toLowerCase().includes(searchTerm.toLowerCase())) &&
         (selectedCategoryFilter === 'All' || c.category === categories.find(cat => cat.id === selectedCategoryFilter)?.name || c.subCategory?.categoryId === selectedCategoryFilter)
-    );
+    ).sort((a, b) => {
+        switch (sortOption) {
+            case 'oldest': return new Date(a.createdAt || 0).getTime() - new Date(b.createdAt || 0).getTime();
+            case 'a_z': return a.title.localeCompare(b.title);
+            case 'z_a': return b.title.localeCompare(a.title);
+            case 'latest':
+            default:
+                return new Date(b.createdAt || 0).getTime() - new Date(a.createdAt || 0).getTime();
+        }
+    });
 
     // Get current subcategories based on selection
     const currentSubCategories = selectedCategory
@@ -290,16 +431,36 @@ export default function AdminUploadPage() {
 
     return (
         <div className="min-h-screen bg-slate-50 pb-20">
-            <div className="bg-white border-b border-slate-200 sticky top-0 z-30 shadow-sm">
-                <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 h-16 flex items-center justify-between">
-                    <div className="flex items-center gap-4">
-                        <Link href="/dashboard" className="p-2 -ml-2 text-slate-400 hover:text-slate-700 hover:bg-slate-100 rounded-full transition-all" title="Back to Dashboard">
-                            <ChevronLeft className="h-6 w-6" />
-                        </Link>
-                        <h1 className="text-xl font-bold text-slate-900 flex items-center gap-2">
-                            <Shield className="h-6 w-6 text-cyan-600" /> Content Master
-                        </h1>
+            {/* Dark Header (Dashboard Style) */}
+            <nav className="sticky top-0 z-50 bg-slate-900 border-b border-white/10 shadow-md">
+                <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+                    <div className="flex items-center justify-between h-16">
+                        <div className="flex items-center gap-4">
+                            <Link href="/dashboard" className="p-2 -ml-2 text-slate-400 hover:text-white transition-colors" title="Back to Dashboard">
+                                <ChevronLeft className="h-5 w-5" />
+                            </Link>
+                            <h1 className="text-xl font-bold text-white flex items-center gap-2">
+                                <Shield className="h-5 w-5 text-cyan-400" /> Content Master
+                            </h1>
+                        </div>
+
+                        <div className="flex items-center gap-4">
+                            <button className="p-2 text-slate-400 hover:text-white transition-colors">
+                                <Search className="h-5 w-5" />
+                            </button>
+                            <button className="p-2 text-slate-400 hover:text-white transition-colors relative">
+                                <Bell className="h-5 w-5" />
+                                <span className="absolute top-1.5 right-1.5 w-2 h-2 bg-red-500 rounded-full animate-pulse" />
+                            </button>
+                            <ProfileDropdown />
+                        </div>
                     </div>
+                </div>
+            </nav>
+
+            {/* Sub-Header with Actions */}
+            <div className="bg-white border-b border-slate-200 shadow-sm">
+                <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-4 flex flex-col md:flex-row items-center justify-between gap-4">
                     <div className="flex bg-slate-100 p-1 rounded-full relative">
                         <button
                             onClick={() => setViewMode('list')}
@@ -340,6 +501,19 @@ export default function AdminUploadPage() {
                                 />
                             </div>
                             <div className="flex items-center gap-2">
+                                <div className="flex items-center gap-2 mr-2 border-r border-slate-200 pr-4">
+                                    <span className="text-sm text-slate-500 font-medium">Sort:</span>
+                                    <select
+                                        className="px-3 py-2 border border-slate-300 rounded-lg outline-none focus:ring-2 focus:ring-cyan-500 text-sm"
+                                        value={sortOption}
+                                        onChange={(e) => setSortOption(e.target.value)}
+                                    >
+                                        <option value="latest">Latest</option>
+                                        <option value="oldest">Older</option>
+                                        <option value="a_z">A-Z</option>
+                                        <option value="z_a">Z-A</option>
+                                    </select>
+                                </div>
                                 <Filter className="h-5 w-5 text-slate-400" />
                                 <select
                                     className="px-4 py-2 border border-slate-300 rounded-lg outline-none focus:ring-2 focus:ring-cyan-500 max-w-[200px]"
@@ -366,7 +540,7 @@ export default function AdminUploadPage() {
                                     <div key={course.id} className="group bg-white rounded-xl border border-slate-200 shadow-sm hover:shadow-lg transition-all overflow-hidden flex flex-col">
                                         <div className="relative h-48 w-full bg-slate-100">
                                             {course.thumbnail ? (
-                                                <Image src={course.thumbnail} alt={course.title} fill className="object-cover group-hover:scale-105 transition-transform duration-500" />
+                                                <CourseImage src={course.thumbnail} alt={course.title} className="object-contain group-hover:scale-105 transition-transform duration-500" />
                                             ) : (
                                                 <div className="flex items-center justify-center h-full text-slate-300">
                                                     <ImageIcon className="h-12 w-12" />
@@ -380,7 +554,12 @@ export default function AdminUploadPage() {
                                         </div>
                                         <div className="p-5 flex-1 flex flex-col">
                                             <div className="flex justify-between items-start mb-2">
-                                                <span className="text-xs font-semibold text-cyan-600 bg-cyan-50 px-2 py-1 rounded-md mb-2 inline-block">
+                                                <span className={cn(
+                                                    "text-xs font-semibold px-2 py-1 rounded-md mb-2 inline-block",
+                                                    course.isCompliance
+                                                        ? "bg-amber-100 text-amber-800 border border-amber-200"
+                                                        : "text-cyan-600 bg-cyan-50"
+                                                )}>
                                                     {/* Display Category Name */}
                                                     {course.subCategory?.category?.name || course.category}
                                                 </span>
@@ -394,9 +573,15 @@ export default function AdminUploadPage() {
                                             <p className="text-sm text-slate-500 mb-4 line-clamp-3 flex-1">{course.description || "No description provided."}</p>
                                             <div className="mt-auto border-t border-slate-100 pt-4 flex justify-between items-center text-sm text-slate-500">
                                                 <span>{/* Chapters count */}</span>
-                                                <Link href={`/learn/${course.id}`} className="flex items-center gap-1 text-cyan-600 font-semibold hover:gap-2 transition-all">
-                                                    Preview <ArrowRight className="h-4 w-4" />
-                                                </Link>
+                                                {course.isCompliance ? (
+                                                    <Link href={`/compliance/${course.id}?preview=true`} className="flex items-center gap-1 text-cyan-600 font-semibold hover:gap-2 transition-all">
+                                                        Preview <ArrowRight className="h-4 w-4" />
+                                                    </Link>
+                                                ) : (
+                                                    <Link href={`/learn/${course.id}?preview=true`} className="flex items-center gap-1 text-cyan-600 font-semibold hover:gap-2 transition-all">
+                                                        Preview <ArrowRight className="h-4 w-4" />
+                                                    </Link>
+                                                )}
                                             </div>
                                         </div>
                                     </div>
@@ -426,29 +611,73 @@ export default function AdminUploadPage() {
                                     <label className="block text-sm font-medium text-slate-700 mb-1">Title</label>
                                     <input type="text" maxLength={150} value={courseTitle} onChange={(e) => setCourseTitle(e.target.value)} placeholder="e.g. Advanced Sales Tactics 2025" className="w-full px-4 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-cyan-500 outline-none" />
                                 </div>
+
+                                <div className="flex items-center gap-2 bg-slate-50 p-3 rounded-lg border border-slate-100">
+                                    <input
+                                        type="checkbox"
+                                        id="isCompliance"
+                                        checked={isCompliance}
+                                        onChange={(e) => setIsCompliance(e.target.checked)}
+                                        className="h-5 w-5 text-cyan-600 rounded focus:ring-cyan-500 border-gray-300"
+                                    />
+                                    <label htmlFor="isCompliance" className="text-sm font-medium text-slate-700 select-none cursor-pointer">
+                                        Mark as Compliance/Policy Document
+                                        <p className="text-xs text-slate-500 font-normal mt-0.5">Will be shown in Compliance Dashboard instead of Course Library</p>
+                                    </label>
+                                </div>
+
+                                {/* Document Number (Compliance Only) */}
+                                {isCompliance && (
+                                    <div className="animate-in fade-in slide-in-from-top-2">
+                                        <label className="block text-sm font-medium text-slate-700 mb-1">Document Number</label>
+                                        <input
+                                            type="text"
+                                            value={documentNumber}
+                                            onChange={(e) => setDocumentNumber(e.target.value)}
+                                            placeholder="e.g. POL-2025-001"
+                                            className="w-full px-4 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-cyan-500 outline-none font-mono text-sm"
+                                        />
+                                    </div>
+                                )}
+
                                 <div>
                                     <label className="block text-sm font-medium text-slate-700 mb-1">Description</label>
                                     <textarea value={description} onChange={(e) => setDescription(e.target.value)} placeholder="Enter a brief description..." className="w-full px-4 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-cyan-500 outline-none resize-y min-h-[4.5rem]" rows={2} />
                                 </div>
 
+                                {/* Compliance Effect logic moved up */}
+
                                 {/* Modern Category Selection */}
                                 <div>
                                     <label className="block text-sm font-medium text-slate-700 mb-3">Category</label>
                                     <div className="flex flex-wrap gap-2 mb-4">
-                                        {categories.map((cat: any) => (
-                                            <button
-                                                key={cat.id}
-                                                onClick={() => { setSelectedCategory(cat.id); setSelectedSubCategory(''); }}
-                                                className={cn(
-                                                    "px-4 py-2 rounded-lg text-sm font-medium border transition-all",
-                                                    selectedCategory === cat.id
-                                                        ? "bg-cyan-50 border-cyan-500 text-cyan-700 ring-1 ring-cyan-500"
-                                                        : "bg-white border-slate-200 text-slate-600 hover:border-cyan-300 hover:text-cyan-600"
-                                                )}
-                                            >
-                                                {cat.name}
-                                            </button>
-                                        ))}
+                                        {categories.map((cat: any) => {
+                                            const isPolicy = cat.name.toLowerCase() === 'policy';
+                                            const isDisabled = isCompliance && !isPolicy;
+
+                                            return (
+                                                <button
+                                                    key={cat.id}
+                                                    onClick={() => {
+                                                        if (!isDisabled) {
+                                                            setSelectedCategory(cat.id);
+                                                            setSelectedSubCategory('');
+                                                        }
+                                                    }}
+                                                    disabled={isDisabled}
+                                                    className={cn(
+                                                        "px-4 py-2 rounded-lg text-sm font-medium border transition-all",
+                                                        selectedCategory === cat.id
+                                                            ? "bg-cyan-50 border-cyan-500 text-cyan-700 ring-1 ring-cyan-500"
+                                                            : isDisabled
+                                                                ? "bg-slate-50 border-slate-100 text-slate-300 cursor-not-allowed"
+                                                                : "bg-white border-slate-200 text-slate-600 hover:border-cyan-300 hover:text-cyan-600"
+                                                    )}
+                                                >
+                                                    {cat.name}
+                                                </button>
+                                            );
+                                        })}
                                     </div>
 
                                     {/* SubCategory Selection */}
@@ -480,7 +709,7 @@ export default function AdminUploadPage() {
                                         <label className="block text-sm font-bold text-slate-800 mb-2">Cover Image {isEditing && "(Optional)"}</label>
                                         <div className={cn("relative w-full aspect-video rounded-xl border-2 border-dashed flex flex-col items-center justify-center cursor-pointer transition-all overflow-hidden", coverFile ? "border-cyan-500 bg-cyan-50" : "border-slate-300 hover:border-cyan-400 bg-slate-50")}>
                                             <input type="file" accept="image/*" onChange={handleCoverChange} className="absolute inset-0 opacity-0 cursor-pointer z-10" />
-                                            {coverPreview ? <Image src={coverPreview} alt="Cover" fill className="object-cover" /> : <div className="text-center p-4"><ImageIcon className="h-8 w-8 text-slate-400 mx-auto mb-2" /><span className="text-sm text-slate-500">Upload Cover</span></div>}
+                                            {coverPreview ? <Image src={coverPreview} alt="Cover" fill className="object-contain" /> : <div className="text-center p-4"><ImageIcon className="h-8 w-8 text-slate-400 mx-auto mb-2" /><span className="text-sm text-slate-500">Upload Cover</span></div>}
                                         </div>
                                     </div>
                                     <div>

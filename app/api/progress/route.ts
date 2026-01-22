@@ -4,6 +4,31 @@ import { PrismaClient } from '@prisma/client';
 
 const prisma = new PrismaClient();
 
+export async function GET(req: NextRequest) {
+    const { searchParams } = new URL(req.url);
+    const userId = searchParams.get('userId');
+    const topicId = searchParams.get('topicId');
+
+    if (!userId || !topicId) {
+        return NextResponse.json({ error: "Missing params" }, { status: 400 });
+    }
+
+    try {
+        const progress = await prisma.userProgress.findUnique({
+            where: {
+                userId_topicId: {
+                    userId,
+                    topicId
+                }
+            }
+        });
+
+        return NextResponse.json({ completed: progress?.completed || false });
+    } catch (error) {
+        return NextResponse.json({ error: "DB Error" }, { status: 500 });
+    }
+}
+
 export async function POST(req: NextRequest) {
     try {
         const { userId, topicId, completed } = await req.json();

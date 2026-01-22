@@ -20,6 +20,8 @@ export const metadata: Metadata = {
 import { AuthProvider } from "@/components/AuthProvider";
 import { ToastProvider } from "@/components/ToastProvider";
 
+import Image from "next/image";
+
 export default function RootLayout({
   children,
 }: Readonly<{
@@ -28,9 +30,20 @@ export default function RootLayout({
   return (
     <html lang="en" suppressHydrationWarning>
       <body
-        className={`${geistSans.variable} ${geistMono.variable} antialiased`}
+        className={`${geistSans.variable} ${geistMono.variable} antialiased relative bg-slate-50`}
         suppressHydrationWarning
       >
+        <div className="fixed inset-0 flex items-center justify-center -z-10 opacity-[0.08] pointer-events-none select-none">
+          <div className="relative w-[600px] h-[600px]">
+            <Image
+              src="/assets/logo.png"
+              alt="Watermark"
+              fill
+              className="object-contain grayscale contrast-125"
+              priority
+            />
+          </div>
+        </div>
         <AuthProvider>
           <ToastProvider>
             {children}

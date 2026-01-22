@@ -44,8 +44,7 @@ export default function CoachPage() {
             {/* Coach Selection Cards */}
             <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 -mt-10 relative z-20">
                 <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
-                    {/* Language Coach */}
-                    <Link href="#" className="group">
+                    <Link href="/coach/language" className="group">
                         <div className="bg-white rounded-2xl p-8 shadow-lg hover:shadow-xl transition-all border border-slate-100 h-full flex flex-col items-center text-center relative overflow-hidden group-hover:-translate-y-1">
                             <div className="h-20 w-20 bg-blue-50 text-blue-600 rounded-full flex items-center justify-center mb-6 group-hover:scale-110 transition-transform">
                                 <Languages className="h-10 w-10" />
@@ -76,15 +75,15 @@ export default function CoachPage() {
                         </div>
                     </Link>
 
-                    {/* AI Voice Assistance */}
+                    {/* Communication Coach */}
                     <Link href="/coach/roleplay" className="group">
                         <div className="bg-white rounded-2xl p-8 shadow-lg hover:shadow-xl transition-all border border-slate-100 h-full flex flex-col items-center text-center relative overflow-hidden group-hover:-translate-y-1">
                             <div className="h-20 w-20 bg-rose-50 text-rose-600 rounded-full flex items-center justify-center mb-6 group-hover:scale-110 transition-transform">
                                 <Mic className="h-10 w-10" />
                             </div>
-                            <h3 className="text-2xl font-bold text-slate-900 mb-3">AI Voice Assistance</h3>
+                            <h3 className="text-2xl font-bold text-slate-900 mb-3">Communication Coach</h3>
                             <p className="text-slate-500 mb-8 leading-relaxed">
-                                Practice speaking and get real-time feedback on pronunciation and delivery.
+                                Master roleplays for performance reviews, client pitches, and difficult conversations.
                             </p>
                             <span className="mt-auto px-6 py-2.5 rounded-full bg-rose-600 text-white font-medium text-sm hover:bg-rose-700 transition-colors inline-flex items-center gap-2">
                                 Start Session <ArrowRight className="h-4 w-4" />

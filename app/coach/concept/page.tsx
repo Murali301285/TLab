@@ -1,32 +1,125 @@
 'use client';
 
-import React, { useState } from 'react';
+import React, { useState, useRef, useEffect } from 'react';
 import Link from 'next/link';
-import { ChevronLeft, Search, Loader2, Info, ArrowRight, Table } from 'lucide-react';
+import { useRouter } from 'next/navigation';
+import { ChevronLeft, Search, Loader2, Info, ArrowRight, Table, MessageSquare, Send, User, Bot, Play, Pause, Mic, LogOut } from 'lucide-react';
 // @ts-ignore
 import MindMap from '@/components/MindMap';
 
+interface ChatMessage {
+    role: 'user' | 'assistant';
+    content: string;
+}
+
 export default function ConceptPage() {
+    const router = useRouter();
     const [topic, setTopic] = useState('');
     const [loading, setLoading] = useState(false);
     const [data, setData] = useState<any>(null); // { summary, mermaid, steps, comparison }
 
-    const handleSearch = async (e: React.FormEvent) => {
-        e.preventDefault();
+    // Chat State
+    const [chatInput, setChatInput] = useState('');
+    const [chatMessages, setChatMessages] = useState<ChatMessage[]>([]);
+    const [chatLoading, setChatLoading] = useState(false);
+
+    // New Functionality State
+    const [sessionId, setSessionId] = useState<string | null>(null);
+    const [currentUserId, setCurrentUserId] = useState<string>('');
+    const [playbackSpeed, setPlaybackSpeed] = useState(1);
+    const [speakingLineIdx, setSpeakingLineIdx] = useState<number | null>(null);
+    const [isMicOpen, setIsMicOpen] = useState(false);
+    const [micTarget, setMicTarget] = useState<'search' | 'chat'>('chat'); // New state to track which input is using mic
+
+    const chatEndRef = useRef<HTMLDivElement>(null);
+
+    // 1. Fetch User (Auth)
+    useEffect(() => {
+        const fetchUser = async () => {
+            try {
+                const res = await fetch('/api/auth/me');
+                if (res.ok) {
+                    const data = await res.json();
+                    if (data.user?.id) setCurrentUserId(data.user.id);
+                }
+            } catch (e) { }
+        };
+        fetchUser();
+    }, []);
+
+    // 2. Scroll Logic
+    useEffect(() => {
+        chatEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+    }, [chatMessages]);
+
+    // 3. Speech Recognition Logic
+    useEffect(() => {
+        if (!isMicOpen) return;
+        // @ts-ignore
+        const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+        if (!SpeechRecognition) {
+            alert("Browser not supported for voice.");
+            setIsMicOpen(false);
+            return;
+        }
+        const recognition = new SpeechRecognition();
+        recognition.continuous = false;
+        recognition.interimResults = false;
+        recognition.lang = 'en-US';
+        recognition.onresult = (event: any) => {
+            const transcript = event.results[0][0].transcript;
+            if (micTarget === 'search') {
+                setTopic(transcript);
+            } else {
+                setChatInput(transcript);
+            }
+            setIsMicOpen(false);
+        };
+        recognition.checkOnEnd = () => setIsMicOpen(false);
+        try { recognition.start(); } catch (e) { }
+        return () => { recognition.stop(); };
+    }, [isMicOpen, micTarget]); // Depend on micTarget
+
+
+    const handleSearch = async (e?: React.FormEvent) => {
+        if (e) e.preventDefault();
         if (!topic.trim()) return;
 
         setLoading(true);
         setData(null);
+        setChatMessages([]);
+
+        // Use user ID or fallback
+        const userId = currentUserId || 'guest_user';
 
         try {
+            // A. Search/Generate Concept
             const res = await fetch('/api/ai/concept', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ topic })
             });
             const response = await res.json();
-            if (response.success) {
-                setData(response.data);
+
+            if (response.content) {
+                setData(response.content);
+
+                // B. Start Session Automagically
+                try {
+                    const sessionRes = await fetch('/api/coach/session', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({
+                            userId,
+                            mode: 'CONCEPT',
+                            config: { topic: topic }
+                        })
+                    });
+                    if (sessionRes.ok) {
+                        const sessData = await sessionRes.json();
+                        setSessionId(sessData.session.id);
+                    }
+                } catch (err) { console.error("Session Start Failed", err); }
             }
         } catch (error) {
             console.error(error);
@@ -35,61 +128,146 @@ export default function ConceptPage() {
         }
     };
 
+    const handleEndSession = async () => {
+        if (sessionId) {
+            if (!confirm("Are you sure you want to exit? Chat history will be deleted.")) return;
+
+            await fetch('/api/coach/session', {
+                method: 'PATCH',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ sessionId })
+            });
+        }
+        // Redirect or Reset
+        router.push('/coach');
+    };
+
+    const speakText = (text: string, idx: number) => {
+        window.speechSynthesis.cancel();
+        if (speakingLineIdx === idx) {
+            setSpeakingLineIdx(null);
+            return;
+        }
+        const utterance = new SpeechSynthesisUtterance(text);
+        utterance.rate = playbackSpeed;
+        utterance.onend = () => setSpeakingLineIdx(null);
+        setSpeakingLineIdx(idx);
+        window.speechSynthesis.speak(utterance);
+    };
+
+    const handleChatSend = async (e?: React.FormEvent) => {
+        if (e) e.preventDefault();
+        if (!chatInput.trim() || chatLoading) return;
+
+        const userMsg = chatInput.trim();
+        setChatInput('');
+        const newMsgs = [...chatMessages, { role: 'user', content: userMsg } as ChatMessage];
+        setChatMessages(newMsgs);
+        setChatLoading(true);
+
+        try {
+            const res = await fetch('/api/ai/concept/chat', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    message: userMsg,
+                    topic: topic,
+                    context: data,
+                    history: chatMessages,
+                    sessionId // Pass session ID for persistence
+                })
+            });
+
+            const response = await res.json();
+            const replyMsg = { role: 'assistant', content: response.reply } as ChatMessage;
+
+            setChatMessages(prev => [...prev, replyMsg]);
+
+        } catch (error) {
+            console.error(error);
+        } finally {
+            setChatLoading(false);
+        }
+    };
+
     return (
         <div className="min-h-screen bg-slate-50 flex flex-col">
             {/* Header / Nav */}
-            <div className="bg-slate-900 text-white p-4 sticky top-0 z-10 border-b border-white/10">
-                <div className="max-w-7xl mx-auto flex items-center gap-4">
-                    <Link href="/coach" className="text-slate-400 hover:text-white transition-colors">
-                        <ChevronLeft className="h-6 w-6" />
-                    </Link>
-                    <h1 className="font-bold text-lg">Visual Concept Coach</h1>
+            <div className="bg-slate-900 text-white p-4 sticky top-0 z-50 border-b border-white/10 flex items-center justify-between">
+                <div className="flex items-center gap-4">
+                    <button onClick={handleEndSession} className="text-slate-400 hover:text-white transition-colors flex items-center gap-2">
+                        <ChevronLeft className="h-5 w-5" /> Back
+                    </button>
+                    <h1 className="font-bold text-lg hidden md:block">Visual Concept Coach</h1>
                 </div>
+
+                {sessionId && (
+                    <button onClick={handleEndSession} className="flex items-center gap-2 text-rose-400 hover:text-rose-300 transition-colors text-sm font-bold">
+                        <LogOut className="h-4 w-4" /> End Session
+                    </button>
+                )}
             </div>
 
             {/* Main Content */}
             <main className="flex-1 max-w-7xl mx-auto w-full p-4 md:p-8">
 
-                {/* Search Hero */}
-                <div className="max-w-2xl mx-auto mb-12 text-center">
-                    {!data && !loading && (
-                        <div className="mb-8">
-                            <h2 className="text-3xl font-bold text-slate-900 mb-4">What do you want to visualize?</h2>
-                            <p className="text-slate-500">Enter a complex topic, and I'll break it down into diagrams, steps, and tables.</p>
+                {/* Search Hero (Only show if no data) */}
+                {!data && (
+                    <div className="max-w-2xl mx-auto mt-20 text-center animate-in fade-in slide-in-from-bottom-8">
+                        <div className="mb-10">
+                            <div className="w-20 h-20 bg-purple-100 text-purple-600 rounded-full flex items-center justify-center mx-auto mb-6">
+                                <Search className="h-10 w-10" />
+                            </div>
+                            <h2 className="text-4xl font-bold text-slate-900 mb-4">What do you want to visualize?</h2>
+                            <p className="text-slate-500 text-lg">Enter a complex topic (e.g. "Photosynthesis"), and I'll break it down into diagrams, steps, and tables.</p>
                         </div>
-                    )}
 
-                    <form onSubmit={handleSearch} className="relative shadow-xl rounded-full">
-                        <input
-                            type="text"
-                            value={topic}
-                            onChange={(e) => setTopic(e.target.value)}
-                            placeholder="e.g., Photosynthesis, Agile Methodology, Supply Chain..."
-                            className="w-full pl-6 pr-14 py-4 rounded-full border-2 border-slate-200 focus:border-purple-500 focus:ring-4 focus:ring-purple-500/10 outline-none text-lg transition-all"
-                        />
-                        <button
-                            type="submit"
-                            disabled={loading || !topic}
-                            className="absolute right-2 top-2 p-2 bg-purple-600 text-white rounded-full hover:bg-purple-700 transition-colors disabled:opacity-50"
-                        >
-                            {loading ? <Loader2 className="h-6 w-6 animate-spin" /> : <ArrowRight className="h-6 w-6" />}
-                        </button>
-                    </form>
-                </div>
+                        <div className="relative shadow-2xl rounded-full bg-white transition-transform hover:scale-[1.02] flex items-center p-2">
+                            {/* Mic for Search */}
+                            <button
+                                onClick={() => { setMicTarget('search'); setIsMicOpen(!isMicOpen); }}
+                                className={`p-4 rounded-full transition-all flex-shrink-0 ${isMicOpen && micTarget === 'search' ? 'bg-red-500 text-white animate-pulse' : 'text-slate-400 hover:bg-slate-100'}`}
+                            >
+                                <Mic className="h-6 w-6" />
+                            </button>
 
-                {loading && (
-                    <div className="text-center py-20">
-                        <div className="inline-block animate-spin rounded-full h-12 w-12 border-4 border-purple-200 border-t-purple-600 mb-4"></div>
-                        <p className="text-slate-500 animate-pulse">Designing your explanation...</p>
+                            <input
+                                type="text"
+                                value={topic}
+                                onChange={(e) => setTopic(e.target.value)}
+                                onKeyDown={e => e.key === 'Enter' && handleSearch()}
+                                placeholder="e.g., Quantum Computing, French Revolution..."
+                                className="w-full py-4 px-4 outline-none text-xl font-medium text-slate-700 placeholder:text-slate-400"
+                            />
+
+                            <button
+                                onClick={() => handleSearch()}
+                                disabled={loading || !topic}
+                                className="aspect-square bg-purple-600 text-white rounded-full hover:bg-purple-700 transition-all disabled:opacity-50 flex items-center justify-center h-14 w-14 flex-shrink-0"
+                            >
+                                {loading ? <Loader2 className="h-6 w-6 animate-spin" /> : <ArrowRight className="h-6 w-6" />}
+                            </button>
+                        </div>
+
+                        {loading && (
+                            <div className="mt-8 flex items-center justify-center gap-3 text-purple-600 font-medium animate-pulse">
+                                <Loader2 className="h-5 w-5 animate-spin" />
+                                <span>Generating visualizations... This may take a moment.</span>
+                            </div>
+                        )}
+
+                        {isMicOpen && micTarget === 'search' && (
+                            <div className="mt-4 text-slate-500 animate-pulse font-medium">Listening... speak your topic</div>
+                        )}
                     </div>
                 )}
 
                 {data && (
-                    <div className="space-y-8 animate-in fade-in slide-in-from-bottom-4 duration-700">
+                    <div className="space-y-8 animate-in fade-in slide-in-from-bottom-4 duration-700 pb-20">
 
                         {/* 1. Summary Header */}
-                        <div className="bg-gradient-to-r from-purple-100 to-white border-l-4 border-purple-500 p-6 rounded-r-xl shadow-sm">
-                            <h2 className="text-2xl font-bold text-slate-900 capitalize mb-2">{topic}</h2>
+                        <div className="bg-white border-l-4 border-purple-500 p-6 rounded-r-xl shadow-sm">
+                            <h2 className="text-3xl font-bold text-slate-900 capitalize mb-2">{topic}</h2>
                             <p className="text-slate-700 text-lg leading-relaxed">{data.summary}</p>
                         </div>
 
@@ -125,7 +303,7 @@ export default function ConceptPage() {
                             </div>
                         )}
 
-                        {/* 4. Comparison Table (Optional) */}
+                        {/* 4. Comparison Table */}
                         {data.comparison && (
                             <div className="bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden">
                                 <div className="px-6 py-4 border-b border-slate-100 flex items-center gap-2 bg-slate-50">
@@ -158,6 +336,102 @@ export default function ConceptPage() {
                                 </div>
                             </div>
                         )}
+
+                        {/* 5. Concept Chat Interface (Refactored) */}
+                        <div className="mt-12 bg-white rounded-2xl shadow-xl border border-purple-100 overflow-hidden flex flex-col h-[600px]">
+                            <div className="bg-purple-600 text-white px-6 py-4 flex items-center justify-between">
+                                <div className="flex items-center gap-3">
+                                    <MessageSquare className="h-6 w-6" />
+                                    <div>
+                                        <h3 className="font-bold text-lg">Chat about {topic}</h3>
+                                        <p className="text-purple-100 text-xs">Ask questions specifically related to this topic</p>
+                                    </div>
+                                </div>
+
+                                {/* Speed Control */}
+                                <select
+                                    value={playbackSpeed}
+                                    onChange={e => setPlaybackSpeed(parseFloat(e.target.value))}
+                                    className="bg-purple-700 text-white border-none rounded-lg py-1 px-3 text-xs font-bold focus:ring-0 outline-none cursor-pointer"
+                                >
+                                    <option value="0.75">0.75x</option>
+                                    <option value="1">1.0x</option>
+                                    <option value="1.25">1.25x</option>
+                                </select>
+                            </div>
+
+                            <div className="flex-1 overflow-y-auto p-4 md:p-6 bg-slate-50 space-y-6">
+                                {chatMessages.length === 0 && (
+                                    <div className="text-center text-slate-400 mt-20">
+                                        <MessageSquare className="h-12 w-12 mx-auto mb-3 opacity-20" />
+                                        <p>Have doubts? Ask anything about {topic}!</p>
+                                    </div>
+                                )}
+                                {chatMessages.map((msg, idx) => (
+                                    <div key={idx} className={`flex items-start gap-3 ${msg.role === 'user' ? 'flex-row-reverse' : 'flex-row'}`}>
+                                        <div className={`w-8 h-8 rounded-full flex items-center justify-center flex-shrink-0 ${msg.role === 'user' ? 'bg-purple-100 text-purple-600' : 'bg-white text-purple-600 border border-purple-100'
+                                            }`}>
+                                            {msg.role === 'user' ? <User className="h-4 w-4" /> : <Bot className="h-4 w-4" />}
+                                        </div>
+                                        <div className={`max-w-[80%] space-y-1`}>
+                                            <div className={`rounded-2xl px-5 py-3 text-sm leading-relaxed shadow-sm ${msg.role === 'user'
+                                                ? 'bg-purple-600 text-white rounded-tr-sm'
+                                                : 'bg-white text-slate-700 border border-slate-100 rounded-tl-sm'
+                                                }`}>
+                                                {msg.content}
+                                            </div>
+
+                                            {/* Play Button */}
+                                            <button
+                                                onClick={() => speakText(msg.content, idx)}
+                                                className={`text-xs flex items-center gap-1 hover:underline ${msg.role === 'user' ? 'text-slate-400 ml-auto' : 'text-purple-500'
+                                                    }`}
+                                            >
+                                                {speakingLineIdx === idx ? <Pause className="h-3 w-3" /> : <Play className="h-3 w-3" />}
+                                                {speakingLineIdx === idx ? 'Stop' : 'Play'}
+                                            </button>
+                                        </div>
+                                    </div>
+                                ))}
+                                {chatLoading && (
+                                    <div className="flex gap-2 items-center text-slate-400 text-xs ml-12">
+                                        <Loader2 className="h-3 w-3 animate-spin" /> Thinking...
+                                    </div>
+                                )}
+                                <div ref={chatEndRef} />
+                            </div>
+
+                            {/* Compact Single-Row UI */}
+                            <div className="p-4 bg-white border-t border-slate-100">
+                                <div className="relative flex items-center gap-2">
+                                    {/* Mic */}
+                                    <button
+                                        onClick={() => { setMicTarget('chat'); setIsMicOpen(!isMicOpen); }}
+                                        className={`p-3 rounded-full transition-all ${isMicOpen && micTarget === 'chat' ? 'bg-red-500 text-white animate-pulse' : 'bg-slate-100 text-slate-500 hover:bg-slate-200'}`}
+                                    >
+                                        <Mic className="h-5 w-5" />
+                                    </button>
+
+                                    <input
+                                        type="text"
+                                        value={chatInput}
+                                        onChange={(e) => setChatInput(e.target.value)}
+                                        onKeyDown={e => e.key === 'Enter' && handleChatSend()}
+                                        placeholder={`Ask a question about ${topic}...`}
+                                        className="flex-1 py-3 px-5 bg-slate-50 rounded-full border border-slate-200 focus:border-purple-500 focus:ring-4 focus:ring-purple-500/10 outline-none transition-all"
+                                    />
+
+                                    <button
+                                        onClick={() => handleChatSend()}
+                                        disabled={!chatInput.trim() || chatLoading}
+                                        className="p-3 bg-purple-600 text-white rounded-full hover:bg-purple-700 disabled:opacity-50 disabled:hover:bg-purple-600 transition-colors shadow-sm"
+                                    >
+                                        <Send className="h-5 w-5" />
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
+
                     </div>
                 )}
             </main>

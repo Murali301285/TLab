@@ -34,7 +34,9 @@ import { useToast } from '@/components/ToastProvider';
 import AddUserModal from '@/components/AddUserModal';
 import EditUserModal from '@/components/EditUserModal';
 import ManageRolesModal from '@/components/ManageRolesModal';
+import AssignContentModal from '@/components/AssignContentModal';
 import { ROLES } from '@/data/mockData';
+import AdminUserQuizHistory from '@/components/quiz/AdminUserQuizHistory';
 
 export default function UserManagementPage() {
     const { user: currentUser } = useAuth();
@@ -59,6 +61,7 @@ export default function UserManagementPage() {
     const [selectedUser, setSelectedUser] = useState<any | null>(null);
     const [isAssignModalOpen, setIsAssignModalOpen] = useState(false);
     const [isProgressModalOpen, setIsProgressModalOpen] = useState(false);
+    const [activeModalTab, setActiveModalTab] = useState<'courses' | 'quizzes'>('courses');
 
     // Assignment Form State
     const [assignForm, setAssignForm] = useState({
@@ -144,6 +147,19 @@ export default function UserManagementPage() {
     };
 
     const handleToggleActive = async (user: any) => {
+        // Check for subordinates if we are DEACTIVATING
+        if (user.isActive) {
+            const subordinatesCount = users.filter(u => u.managerId === user.id).length;
+            if (subordinatesCount > 0) {
+                const confirmed = window.confirm(
+                    `⚠️ WARNING: This user is a Manager for ${subordinatesCount} other user(s).\n\n` +
+                    `Deactivating them will move these ${subordinatesCount} users to the "Unallocated" pool (no manager).\n\n` +
+                    `Do you want to proceed?`
+                );
+                if (!confirmed) return;
+            }
+        }
+
         try {
             const res = await fetch('/api/users', {
                 method: 'PATCH',
@@ -223,8 +239,8 @@ export default function UserManagementPage() {
         setIsAssignModalOpen(true);
     };
 
-    const confirmAssignment = async () => {
-        if (!selectedUser || !assignForm.courseId) return;
+    const confirmAssignment = async (submissionData: any) => {
+        if (!selectedUser || !submissionData.courseId) return;
 
         try {
             const res = await fetch('/api/courses/assign', {
@@ -232,7 +248,7 @@ export default function UserManagementPage() {
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({
                     userId: selectedUser.id,
-                    ...assignForm
+                    ...submissionData
                 })
             });
 
@@ -242,10 +258,10 @@ export default function UserManagementPage() {
                 return;
             }
 
-            // Optimistic Update
+            // Opmtimistic Update
             setUsers(prev => prev.map(u => {
                 if (u.id === selectedUser.id) {
-                    return { ...u, assignedCourses: [...(u.assignedCourses || []), assignForm.courseId] };
+                    return { ...u, assignedCourses: [...(u.assignedCourses || []), submissionData.courseId] };
                 }
                 return u;
             }));
@@ -407,6 +423,20 @@ export default function UserManagementPage() {
                                                             <Briefcase className="h-3.5 w-3.5 text-slate-400" />
                                                             <span className="text-xs text-slate-500">{user.department}</span>
                                                         </div>
+                                                        {/* Reporting Line Clarity */}
+                                                        {user.managerId && (
+                                                            <div className="flex items-center gap-1.5 mt-0.5">
+                                                                <span className="text-[10px] text-slate-400">Reports to:</span>
+                                                                <span className="text-[10px] font-medium text-slate-600">
+                                                                    {users.find(u => u.id === user.managerId)?.name || 'Unknown'}
+                                                                </span>
+                                                            </div>
+                                                        )}
+                                                        {!user.managerId && user.role !== 'admin' && (
+                                                            <div className="flex items-center gap-1.5 mt-0.5">
+                                                                <span className="text-[10px] text-slate-400 italic">Unallocated (No Manager)</span>
+                                                            </div>
+                                                        )}
                                                     </div>
                                                 </td>
                                                 <td className="px-6 py-4">
@@ -604,103 +634,14 @@ export default function UserManagementPage() {
                 availableManagers={users.filter(u => u.role === 'manager' || u.role === 'admin')}
             />
 
-            {/* Assign Course Modal - ENHANCED */}
-            {isAssignModalOpen && selectedUser && (
-                <div className="fixed inset-0 z-[100] flex items-center justify-center bg-slate-900/50 backdrop-blur-sm p-4">
-                    <div className="bg-white rounded-2xl shadow-2xl w-full max-w-lg overflow-hidden animate-in zoom-in-95 duration-200">
-                        <div className="p-6 border-b border-slate-100 flex justify-between items-center bg-slate-50/50">
-                            <div>
-                                <h3 className="text-lg font-bold text-slate-900">Assign Content</h3>
-                                <p className="text-sm text-slate-500">Allocate to <span className="font-semibold text-slate-800">{selectedUser.name}</span></p>
-                            </div>
-                            <button onClick={() => setIsAssignModalOpen(false)} className="text-slate-400 hover:text-slate-600">
-                                <XCircle className="h-6 w-6" />
-                            </button>
-                        </div>
-
-                        <div className="p-6 space-y-6">
-
-                            {/* Course Selection */}
-                            <div>
-                                <label className="block text-sm font-medium text-slate-700 mb-2">Select Course</label>
-                                <select
-                                    className="w-full px-4 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-cyan-500"
-                                    value={assignForm.courseId}
-                                    onChange={(e) => setAssignForm({ ...assignForm, courseId: e.target.value })}
-                                >
-                                    <option value="">-- Choose Course --</option>
-                                    {courses.map(c => (
-                                        <option key={c.id} value={c.id} disabled={selectedUser.assignedCourses?.includes(c.id)}>
-                                            {c.title} {selectedUser.assignedCourses?.includes(c.id) ? '(Already Assigned)' : ''}
-                                        </option>
-                                    ))}
-                                </select>
-                            </div>
-
-                            {/* Validity */}
-                            <div>
-                                <label className="block text-sm font-medium text-slate-700 mb-2 flex items-center gap-2">
-                                    <Clock className="h-4 w-4" /> Validity Period
-                                </label>
-                                <div className="flex gap-4">
-                                    <input
-                                        type="number"
-                                        min="1"
-                                        className="w-24 px-4 py-2 border border-slate-300 rounded-lg"
-                                        value={assignForm.validityValue}
-                                        onChange={(e) => setAssignForm({ ...assignForm, validityValue: parseInt(e.target.value) })}
-                                    />
-                                    <select
-                                        className="flex-1 px-4 py-2 border border-slate-300 rounded-lg"
-                                        value={assignForm.validityUnit}
-                                        onChange={(e) => setAssignForm({ ...assignForm, validityUnit: e.target.value })}
-                                    >
-                                        <option value="DAYS">Days</option>
-                                        <option value="YEARS">Years</option>
-                                    </select>
-                                </div>
-                            </div>
-
-                            {/* Certificate Toggle */}
-                            <div className="flex items-center justify-between p-4 bg-slate-50 rounded-lg border border-slate-100">
-                                <div className="flex items-center gap-3">
-                                    <FileCheck className={cn("h-6 w-6", assignForm.hasCertificate ? "text-cyan-600" : "text-slate-400")} />
-                                    <div>
-                                        <p className="text-sm font-medium text-slate-900">Issue Certificate</p>
-                                        <p className="text-xs text-slate-500">Enable certificate upon completion</p>
-                                    </div>
-                                </div>
-                                <label className="relative inline-flex items-center cursor-pointer">
-                                    <input
-                                        type="checkbox"
-                                        className="sr-only peer"
-                                        checked={assignForm.hasCertificate}
-                                        onChange={(e) => setAssignForm({ ...assignForm, hasCertificate: e.target.checked })}
-                                    />
-                                    <div className="w-11 h-6 bg-slate-200 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-cyan-300 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-cyan-600"></div>
-                                </label>
-                            </div>
-
-                        </div>
-
-                        <div className="p-6 border-t border-slate-100 bg-slate-50 flex justify-end gap-3">
-                            <button
-                                onClick={() => setIsAssignModalOpen(false)}
-                                className="px-4 py-2 text-slate-600 hover:text-slate-900 font-medium"
-                            >
-                                Cancel
-                            </button>
-                            <button
-                                onClick={confirmAssignment}
-                                disabled={!assignForm.courseId}
-                                className="px-6 py-2 bg-cyan-600 text-white rounded-lg hover:bg-cyan-700 font-medium disabled:opacity-50 shadow-lg shadow-cyan-500/20"
-                            >
-                                Assign Course
-                            </button>
-                        </div>
-                    </div>
-                </div>
-            )}
+            {/* Assign Content Modal - IMPORTED & ENHANCED */}
+            <AssignContentModal
+                isOpen={isAssignModalOpen}
+                onClose={() => setIsAssignModalOpen(false)}
+                onAssign={confirmAssignment} // Pass function reference
+                user={selectedUser}
+                courses={courses}
+            />
 
             {/* View Assigned Courses Modal */}
             {selectedUser && isProgressModalOpen && (
@@ -708,7 +649,7 @@ export default function UserManagementPage() {
                     <div className="bg-white rounded-2xl shadow-2xl w-full max-w-2xl overflow-hidden animate-in zoom-in-95 duration-200 flex flex-col max-h-[90vh]">
                         <div className="p-6 border-b border-slate-100 flex justify-between items-center bg-slate-50/50 shrink-0">
                             <div>
-                                <h3 className="text-xl font-bold text-slate-900">Assigned Courses</h3>
+                                <h3 className="text-xl font-bold text-slate-900">User Progress & History</h3>
                                 <div className="flex items-center gap-2 mt-1">
                                     <div className="h-6 w-6 rounded-full bg-slate-200 text-slate-500 flex items-center justify-center text-xs font-bold">
                                         {selectedUser.name.charAt(0)}
@@ -720,6 +661,7 @@ export default function UserManagementPage() {
                                 onClick={() => {
                                     setIsProgressModalOpen(false);
                                     setSelectedUser(null);
+                                    setActiveModalTab('courses');
                                 }}
                                 className="text-slate-400 hover:text-slate-600 transition-colors"
                             >
@@ -727,99 +669,125 @@ export default function UserManagementPage() {
                             </button>
                         </div>
 
-                        <div className="p-8 overflow-y-auto">
-                            {!selectedUser.assignedCourses || selectedUser.assignedCourses.length === 0 ? (
-                                <div className="text-center py-12">
-                                    <div className="h-20 w-20 bg-slate-50 rounded-full flex items-center justify-center mx-auto mb-4">
-                                        <BookOpen className="h-10 w-10 text-slate-300" />
+                        {/* Modal Tabs */}
+                        <div className="px-6 pt-4 border-b border-slate-100 flex gap-6">
+                            <button
+                                onClick={() => setActiveModalTab('courses')}
+                                className={cn(
+                                    "pb-3 text-sm font-bold border-b-2 transition-colors",
+                                    activeModalTab === 'courses' ? "border-cyan-500 text-cyan-600" : "border-transparent text-slate-500 hover:text-slate-700"
+                                )}
+                            >
+                                Assigned Courses
+                            </button>
+                            <button
+                                onClick={() => setActiveModalTab('quizzes')}
+                                className={cn(
+                                    "pb-3 text-sm font-bold border-b-2 transition-colors",
+                                    activeModalTab === 'quizzes' ? "border-purple-500 text-purple-600" : "border-transparent text-slate-500 hover:text-slate-700"
+                                )}
+                            >
+                                Quiz History
+                            </button>
+                        </div>
+
+                        <div className="p-8 overflow-y-auto bg-slate-50/30">
+                            {activeModalTab === 'courses' ? (
+                                !selectedUser.assignedCourses || selectedUser.assignedCourses.length === 0 ? (
+                                    <div className="text-center py-12">
+                                        <div className="h-20 w-20 bg-slate-50 rounded-full flex items-center justify-center mx-auto mb-4">
+                                            <BookOpen className="h-10 w-10 text-slate-300" />
+                                        </div>
+                                        <h3 className="text-lg font-medium text-slate-900">No Courses Assigned</h3>
+                                        <p className="text-slate-500">This user has not been assigned any learning content yet.</p>
                                     </div>
-                                    <h3 className="text-lg font-medium text-slate-900">No Courses Assigned</h3>
-                                    <p className="text-slate-500">This user has not been assigned any learning content yet.</p>
-                                </div>
-                            ) : (
-                                <div className="grid grid-cols-1 sm:grid-cols-2 gap-6">
-                                    {selectedUser.assignedCourses.map((cid: string) => {
-                                        const course = courses.find(c => c.id === cid);
-                                        if (!course) return null;
-                                        return (
-                                            <div key={cid} className="group relative bg-white border border-slate-200 rounded-xl overflow-hidden shadow-sm hover:shadow-md transition-all hover:-translate-y-1">
-                                                {/* Cover Image */}
-                                                <div className="aspect-video bg-slate-100 relative overflow-hidden">
-                                                    {course.thumbnail ? (
-                                                        <img
-                                                            src={course.thumbnail}
-                                                            alt={course.title}
-                                                            className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-105"
-                                                        />
-                                                    ) : (
-                                                        <div className="w-full h-full flex items-center justify-center bg-gradient-to-br from-slate-100 to-slate-200">
-                                                            <BookOpen className="h-10 w-10 text-slate-300" />
-                                                        </div>
-                                                    )}
-                                                    <div className="absolute inset-0 bg-black/0 group-hover:bg-black/10 transition-colors" />
-                                                </div>
-
-                                                {/* Content */}
-                                                <div className="p-4">
-                                                    <div className="flex items-start justify-between mb-2">
-                                                        <span className="text-[10px] uppercase font-bold text-cyan-600 tracking-wider bg-cyan-50 px-2 py-0.5 rounded-full">
-                                                            {course.category}
-                                                        </span>
-                                                        {course.chapters && (
-                                                            <span className="text-[10px] text-slate-400 font-medium">
-                                                                {course.chapters.length} Modules
-                                                            </span>
+                                ) : (
+                                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-6">
+                                        {selectedUser.assignedCourses.map((cid: string) => {
+                                            const course = courses.find(c => c.id === cid);
+                                            if (!course) return null;
+                                            return (
+                                                <div key={cid} className="group relative bg-white border border-slate-200 rounded-xl overflow-hidden shadow-sm hover:shadow-md transition-all hover:-translate-y-1">
+                                                    {/* Cover Image */}
+                                                    <div className="aspect-video bg-slate-100 relative overflow-hidden">
+                                                        {course.thumbnail ? (
+                                                            <img
+                                                                src={course.thumbnail}
+                                                                alt={course.title}
+                                                                className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-105"
+                                                            />
+                                                        ) : (
+                                                            <div className="w-full h-full flex items-center justify-center bg-gradient-to-br from-slate-100 to-slate-200">
+                                                                <BookOpen className="h-10 w-10 text-slate-300" />
+                                                            </div>
                                                         )}
+                                                        <div className="absolute inset-0 bg-black/0 group-hover:bg-black/10 transition-colors" />
                                                     </div>
-                                                    <h4 className="text-xl font-bold text-slate-900 leading-snug mb-1 line-clamp-2" title={course.title}>
-                                                        {course.title}
-                                                    </h4>
-                                                    <p className="text-xs text-slate-500 line-clamp-2 mb-3">
-                                                        {course.description}
-                                                    </p>
 
-                                                    <div className="pt-3 border-t border-slate-50">
-                                                        {(() => {
-                                                            // Calculate Progress
-                                                            const allTopics = course.chapters?.flatMap((ch: any) => ch.topics) || [];
-                                                            const totalTopics = allTopics.length;
-                                                            const completedCount = allTopics.filter((t: any) => selectedUser.completedTopics?.includes(t.id)).length;
-                                                            const progress = totalTopics > 0 ? Math.round((completedCount / totalTopics) * 100) : 0;
+                                                    {/* Content */}
+                                                    <div className="p-4">
+                                                        <div className="flex items-start justify-between mb-2">
+                                                            <span className="text-[10px] uppercase font-bold text-cyan-600 tracking-wider bg-cyan-50 px-2 py-0.5 rounded-full">
+                                                                {course.category}
+                                                            </span>
+                                                            {course.chapters && (
+                                                                <span className="text-[10px] text-slate-400 font-medium">
+                                                                    {course.chapters.length} Modules
+                                                                </span>
+                                                            )}
+                                                        </div>
+                                                        <h4 className="text-xl font-bold text-slate-900 leading-snug mb-1 line-clamp-2" title={course.title}>
+                                                            {course.title}
+                                                        </h4>
+                                                        <p className="text-xs text-slate-500 line-clamp-2 mb-3">
+                                                            {course.description}
+                                                        </p>
 
-                                                            return (
-                                                                <div className="space-y-1.5">
-                                                                    <div className="flex justify-between text-xs font-medium">
-                                                                        <span className={progress === 100 ? "text-green-600" : "text-slate-600"}>
-                                                                            {progress === 100 ? "Completed" : "In Progress"}
-                                                                        </span>
-                                                                        <span className="text-slate-500">{progress}%</span>
+                                                        <div className="pt-3 border-t border-slate-50">
+                                                            {(() => {
+                                                                // Calculate Progress
+                                                                const allTopics = course.chapters?.flatMap((ch: any) => ch.topics) || [];
+                                                                const totalTopics = allTopics.length;
+                                                                const completedCount = allTopics.filter((t: any) => selectedUser.completedTopics?.includes(t.id)).length;
+                                                                const progress = totalTopics > 0 ? Math.round((completedCount / totalTopics) * 100) : 0;
+
+                                                                return (
+                                                                    <div className="space-y-1.5">
+                                                                        <div className="flex justify-between text-xs font-medium">
+                                                                            <span className={progress === 100 ? "text-green-600" : "text-slate-600"}>
+                                                                                {progress === 100 ? "Completed" : "In Progress"}
+                                                                            </span>
+                                                                            <span className="text-slate-500">{progress}%</span>
+                                                                        </div>
+                                                                        <div className="h-1.5 w-full bg-slate-100 rounded-full overflow-hidden">
+                                                                            <div
+                                                                                className={cn("h-full rounded-full transition-all duration-500", progress === 100 ? "bg-green-500" : "bg-cyan-500")}
+                                                                                style={{ width: `${progress}%` }}
+                                                                            />
+                                                                        </div>
+                                                                        {totalTopics > 0 && (
+                                                                            <p className="text-[10px] text-slate-400 text-right">
+                                                                                {completedCount}/{totalTopics} modules
+                                                                            </p>
+                                                                        )}
                                                                     </div>
-                                                                    <div className="h-1.5 w-full bg-slate-100 rounded-full overflow-hidden">
-                                                                        <div
-                                                                            className={cn("h-full rounded-full transition-all duration-500", progress === 100 ? "bg-green-500" : "bg-cyan-500")}
-                                                                            style={{ width: `${progress}%` }}
-                                                                        />
-                                                                    </div>
-                                                                    {totalTopics > 0 && (
-                                                                        <p className="text-[10px] text-slate-400 text-right">
-                                                                            {completedCount}/{totalTopics} modules
-                                                                        </p>
-                                                                    )}
-                                                                </div>
-                                                            );
-                                                        })()}
+                                                                );
+                                                            })()}
 
-                                                        <div className="mt-3 flex justify-end">
-                                                            <Link href={`/learn/${course.id}`} className="text-xs text-cyan-600 hover:underline font-medium">
-                                                                View Course Content
-                                                            </Link>
+                                                            <div className="mt-3 flex justify-end">
+                                                                <Link href={`/learn/${course.id}`} className="text-xs text-cyan-600 hover:underline font-medium">
+                                                                    View Course Content
+                                                                </Link>
+                                                            </div>
                                                         </div>
                                                     </div>
                                                 </div>
-                                            </div>
-                                        );
-                                    })}
-                                </div>
+                                            );
+                                        })}
+                                    </div>
+                                )
+                            ) : (
+                                <AdminUserQuizHistory userId={selectedUser.id} />
                             )}
                         </div>
 

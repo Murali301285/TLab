@@ -30,6 +30,28 @@ export async function POST(req: NextRequest) {
             }
         });
 
+        // Auto-enroll in all active courses to ensure they see content immediately
+        try {
+            const activeCourses = await prisma.course.findMany({
+                where: { isActive: true },
+                select: { id: true }
+            });
+
+            if (activeCourses.length > 0) {
+                await prisma.enrollment.createMany({
+                    data: activeCourses.map(course => ({
+                        userId: user.id,
+                        courseId: course.id,
+                        assignedAt: new Date()
+                    }))
+                });
+                console.log(`[Auto-Enroll] User ${user.email} enrolled in ${activeCourses.length} courses.`);
+            }
+        } catch (enrollError) {
+            console.error("Auto-enrollment failed:", enrollError);
+            // Don't fail the registration if auto-enroll fails, just log it
+        }
+
         // Remove password from response
         const { password: _, ...userWithoutPassword } = user;
 

@@ -22,7 +22,11 @@ model User {
   courses   Course[] @relation("CreatedCourses")
   enrollments Enrollment[]
   progress  UserProgress[]
+  quizAttempts QuizAttempt[]
   managerId String?
+  
+  coachSessions CoachSession[]
+  mentorBookings MentorBooking[]
 }
 
 model Course {
@@ -45,8 +49,11 @@ model Course {
   
   chapters    Chapter[]
   enrollments Enrollment[]
+  quizAttempts QuizAttempt[]
   
   isActive    Boolean  @default(true)
+  isCompliance Boolean @default(false)
+  documentNumber String?
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
 }
@@ -69,6 +76,7 @@ model Topic {
   chapterId String
   chapter   Chapter  @relation(fields: [chapterId], references: [id], onDelete: Cascade)
   progress  UserProgress[]
+  quizAttempts QuizAttempt[]
 }
 
 model UserProgress {
@@ -80,6 +88,9 @@ model UserProgress {
   topic     Topic    @relation(fields: [topicId], references: [id], onDelete: Cascade)
   completed Boolean  @default(false)
   lastAccessed DateTime @default(now())
+
+  timeSpent Int      @default(0) // seconds
+  completedAt DateTime?
 
   @@unique([userId, topicId])
 }
@@ -132,13 +143,114 @@ model Enrollment {
   course         Course    @relation(fields: [courseId], references: [id], onDelete: Cascade)
   
   assignedAt     DateTime  @default(now())
+  completedAt    DateTime?
+  signedAt       DateTime?
   expiresAt      DateTime?
   validityValue  Int?      // e.g. 30
   validityUnit   String?   // 'DAYS' or 'YEARS'
   
+  totalTime      Int       @default(0) // seconds
+  lastActiveAt   DateTime  @default(now())
+
   hasCertificate Boolean   @default(false)
   certName       String?
   certUrl        String?
   
+  certificateId  String?
+  certificate    Certificate? @relation(fields: [certificateId], references: [id])
+  
+  quizConfig     String   @default("5") // "5", "10", "BOTH"
+
   @@unique([userId, courseId])
+}
+
+model QuizAttempt {
+  id             String   @id @default(cuid())
+  userId         String
+  user           User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  
+  courseId       String?
+  course         Course?  @relation(fields: [courseId], references: [id])
+  
+  topicId        String?
+  topic          Topic?   @relation(fields: [topicId], references: [id])
+  
+  topicName      String
+  
+  score          Int
+  totalQuestions Int
+  timeTaken      Int      // in seconds
+  
+  quizData       Json     // Stores full snapshot of questions, options, user answers
+  
+  submittedAt    DateTime @default(now())
+  
+  @@index([userId])
+}
+
+
+model Certificate {
+  id            String   @id @default(cuid())
+  name          String   @unique
+  bannerImage   String?  // Path to uploaded image
+  validityType  String   // 'NA', 'DAYS', 'MONTHS', 'YEARS'
+  validityValue Int?     // e.g., 12
+  remarks       String?
+  isActive      Boolean  @default(true)
+  
+  enrollments   Enrollment[]
+  
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+}
+
+// --- Language Coach Audit ---
+
+model CoachSession {
+  id          String   @id @default(cuid())
+  userId      String
+  user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  
+  mode        String   // 'IMPROVE', 'TEACH', 'TRANSLATE'
+  config      Json     // { sourceLang, targetLang, category }
+  
+  startTime   DateTime @default(now())
+  endTime     DateTime?
+  duration    Int      @default(0) // seconds
+  
+  messages    CoachMessage[]
+  
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+}
+
+model CoachMessage {
+  id        String   @id @default(cuid())
+  sessionId String
+  session   CoachSession @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+  
+  role      String   // 'user', 'assistant', 'system'
+  content   String   @db.Text
+  timestamp DateTime @default(now())
+}
+
+
+// --- Mentors Hub ---
+
+model MentorBooking {
+  id        String   @id @default(cuid())
+  mentorId  String   // ID from Mock Data or potential future User relation
+  userId    String?
+  user      User?    @relation(fields: [userId], references: [id])
+  
+  date      DateTime
+  timeSlot  String   // e.g. "10:00 AM"
+  
+  userEmail String
+  userPhone String?
+  topic     String?
+  status    String   @default("CONFIRMED") // CONFIRMED, CANCELLED, COMPLETED
+  
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 }

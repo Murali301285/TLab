@@ -23,15 +23,22 @@ export async function POST(req: NextRequest) {
         }
 
         // Ensure directory exists
-        const uploadDir = path.join(process.cwd(), 'public/uploads');
+        const cwd = process.cwd();
+        console.log(`[Upload] CWD: ${cwd}`);
+
+        const uploadDir = path.join(cwd, 'public/uploads');
+        console.log(`[Upload] Target Dir: ${uploadDir}`);
+
         try {
             await mkdir(uploadDir, { recursive: true });
         } catch (e) {
             // Ignore if exists
         }
 
-        // Unique filename
-        const filename = `${Date.now()}-${file.name.replace(/[^a-zA-Z0-9.-]/g, '')}`;
+        // Unique filename: timestamp_sanitizedname.ext
+        const ext = path.extname(file.name);
+        const namePart = file.name.replace(ext, '').replace(/[^a-zA-Z0-9.-]/g, '_');
+        const filename = `${Date.now()}_${namePart}${ext}`;
         const filepath = path.join(uploadDir, filename);
 
         // Convert to buffer and write
@@ -39,9 +46,9 @@ export async function POST(req: NextRequest) {
         const buffer = Buffer.from(bytes);
         await writeFile(filepath, buffer);
 
-        // Return URL
+        // Return URL and debug info
         const fileUrl = `/uploads/${filename}`;
-        return NextResponse.json({ success: true, url: fileUrl });
+        return NextResponse.json({ success: true, url: fileUrl, debugPath: filepath });
 
     } catch (error) {
         console.error('Upload Error:', error);

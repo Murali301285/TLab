@@ -114,9 +114,52 @@ export async function POST(req: NextRequest) {
             return NextResponse.json({ error: 'Unsupported file type: ' + file.type }, { status: 400 });
         }
 
-        // 3. AI Process
+        // 3. AI Process or Compliance Extraction
         const apiKey = process.env.GROQ_API_KEY || "";
-        const structure = await processWithGroq(text, category, apiKey);
+        const isCompliance = formData.get('isCompliance') === 'true';
+        let structure: any = {};
+
+        if (isCompliance && (file.type === 'application/pdf' || file.name.endsWith('.pdf'))) {
+            // Compliance Mode: Extract Page-by-Page
+            console.log("Processing Compliance Document (Page-wise)...");
+            const pages: string[] = [];
+
+            const render_page = async (pageData: any) => {
+                const textContent = await pageData.getTextContent();
+                let lastY, text = '';
+                for (let item of textContent.items) {
+                    if (lastY == item.transform[5] || !lastY) {
+                        text += item.str;
+                    } else {
+                        text += '\n' + item.str;
+                    }
+                    lastY = item.transform[5];
+                }
+                const cleanText = text.replace(/\s+/g, ' ').trim();
+                // Store page text at correct index (1-based usually in UI, but 0-based array)
+                pages[pageData.pageIndex] = cleanText;
+                return cleanText;
+            };
+
+            await pdf(buffer, { pagerender: render_page });
+
+            // Structure for Prisma
+            structure = {
+                title: customTitle || file.name.replace(/\.[^/.]+$/, ""),
+                chapters: [
+                    {
+                        title: "Document Content",
+                        topics: pages.map((pageText, idx) => ({
+                            title: `Page ${idx + 1}`,
+                            content: pageText // Pre-fill content!
+                        }))
+                    }
+                ]
+            };
+        } else {
+            // Standard AI Mode
+            structure = await processWithGroq(text, category, apiKey);
+        }
 
         // 4. Save to Prisma
         const courseTitle = customTitle || structure.title || file.name.replace(/\.[^/.]+$/, "");
@@ -141,15 +184,21 @@ export async function POST(req: NextRequest) {
                 sourceText: text,
                 fileUrl: fileUrl,
                 authorId: authorId,
+                isCompliance: isCompliance, // Persist compliance status
+                documentNumber: formData.get('documentNumber') as string || undefined,
                 chapters: {
                     create: structure.chapters?.map((ch: any) => ({
                         title: ch.title,
                         topics: {
-                            create: ch.topics?.map((t: string) => ({
-                                title: t,
-                                type: 'text',
-                                content: ""
-                            }))
+                            create: ch.topics?.map((t: any) => {
+                                // Handle both string (AI) and object (Compliance) topic formats
+                                const isObj = typeof t === 'object';
+                                return {
+                                    title: isObj ? t.title : t,
+                                    type: 'text',
+                                    content: isObj ? JSON.stringify({ text: t.content }) : "" // Wrap text in JSON structure as compatible with UI expectations
+                                };
+                            })
                         }
                     }))
                 }
@@ -158,6 +207,20 @@ export async function POST(req: NextRequest) {
                 chapters: { include: { topics: true } }
             }
         });
+
+        // AUTO-ENROLL AUTHOR (So it shows up in dashboard immediately)
+        try {
+            await prisma.enrollment.create({
+                data: {
+                    userId: authorId,
+                    courseId: newCourse.id,
+                    assignedAt: new Date()
+                }
+            });
+            console.log("Auto-enrolled author:", authorId);
+        } catch (e) {
+            console.warn("Auto-enrollment failed or already exists", e);
+        }
 
         console.log("Course Created:", newCourse.id);
 

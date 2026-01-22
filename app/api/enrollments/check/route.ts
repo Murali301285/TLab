@@ -45,11 +45,32 @@ export async function GET(req: NextRequest) {
             daysLeft = Math.ceil(diff / (1000 * 3600 * 24));
         }
 
+        // Calculate Progress (Robustness for Legacy Data)
+        const totalTopics = await prisma.topic.count({
+            where: { chapter: { courseId: courseId } } // Use courseId from params
+        });
+
+        const completedTopics = await prisma.userProgress.findMany({
+            where: {
+                userId,
+                topic: { chapter: { courseId: courseId } },
+                completed: true
+            },
+            select: { topicId: true }
+        });
+
+        const completedTopicsCount = completedTopics.length;
+        const progress = totalTopics > 0 ? Math.round((completedTopicsCount / totalTopics) * 100) : 0;
+
         return NextResponse.json({
             enrolled: true,
             isValid,
             daysLeft,
-            expiresAt: enrollment.expiresAt
+            expiresAt: enrollment.expiresAt,
+            completedAt: enrollment.completedAt,
+            quizConfig: enrollment.quizConfig,
+            progress,
+            completedTopicIds: completedTopics.map(p => p.topicId)
         });
 
     } catch (error) {

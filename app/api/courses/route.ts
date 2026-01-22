@@ -15,7 +15,8 @@ export async function GET(req: NextRequest) {
                 },
                 author: {
                     select: { name: true }
-                }
+                },
+                subCategory: true
             },
             orderBy: { createdAt: 'desc' }
         });
@@ -28,13 +29,15 @@ export async function GET(req: NextRequest) {
 export async function POST(req: NextRequest) {
     try {
         const body = await req.json();
-        const { title, description, category, thumbnail, authorId, chapters } = body;
+        const { title, description, category, type, subCategoryId, thumbnail, authorId, chapters } = body;
 
         const newCourse = await prisma.course.create({
             data: {
                 title,
                 description,
                 category,
+                type: type || 'COURSE',
+                subCategoryId: subCategoryId || null,
                 thumbnail,
                 authorId,
                 chapters: {

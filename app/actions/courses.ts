@@ -25,6 +25,152 @@ export async function getMyCourses(userId: string) {
         // If userId is missing, maybe default to "u1" for demo?
         const uid = userId || "u1";
 
+        // Check if user has ANY enrollments (Lazy Auto-Enroll for existing users)
+        const enrollmentCount = await prisma.enrollment.count({ where: { userId: uid } });
+
+        if (enrollmentCount === 0) {
+            console.log(`[getMyCourses] User ${uid} has 0 enrollments. Auto-enrolling in active courses...`);
+            const activeCourses = await prisma.course.findMany({ where: { isActive: true }, select: { id: true } });
+            if (activeCourses.length > 0) {
+                await prisma.enrollment.createMany({
+                    data: activeCourses.map(c => ({
+                        userId: uid,
+                        courseId: c.id,
+                        assignedAt: new Date()
+                    }))
+                });
+            }
+        }
+
+        const enrollments = await prisma.enrollment.findMany({
+            where: { userId: uid },
+            include: {
+                course: {
+                    include: {
+                        chapters: {
+                            include: {
+                                topics: { select: { id: true } }
+                            }
+                        }
+                    }
+                }
+            }
+        });
+
+        console.log(`[getMyCourses] User: ${uid}, Enrollments: ${enrollments.length}`);
+
+        const courses = await Promise.all(enrollments.map(async (e) => {
+            // Calculate Total Topics
+            const totalTopics = e.course.chapters.reduce((acc, ch) => acc + ch.topics.length, 0);
+
+            // Calculate Completed Topics
+            let progress = 0;
+            if (totalTopics > 0) {
+                const topicIds = e.course.chapters.flatMap(ch => ch.topics.map(t => t.id));
+                const completedCount = await prisma.userProgress.count({
+                    where: {
+                        userId: uid,
+                        topicId: { in: topicIds },
+                        completed: true
+                    }
+                });
+                progress = Math.round((completedCount / totalTopics) * 100);
+            }
+
+            return {
+                ...e.course,
+                totalTopics,
+                progress, // Now dynamically calculated
+                enrolledAt: e.assignedAt,
+                assignedAt: e.assignedAt,
+                expiresAt: e.expiresAt,
+                completedAt: e.completedAt,
+                totalTime: e.totalTime,
+                lastActiveAt: e.lastActiveAt
+            };
+        }));
+
+        const finalCourses = courses.filter(c => !c.isCompliance);
+
+        console.log(`[getMyCourses] Returning: ${finalCourses.length}`);
+
+        return { success: true, data: finalCourses };
+    } catch (error: any) {
+        return { success: false, error: error.message };
+    }
+}
+
+// ... existing imports ...
+
+export async function signCourse(courseId: string, userId: string) {
+    try {
+        const uid = userId;
+
+        // Calculate validity date if applicable (e.g. 1 year from now)
+        const completedAt = new Date();
+        const signedAt = new Date();
+
+        // Find existing enrollment
+        const enrollment = await prisma.enrollment.findUnique({
+            where: {
+                userId_courseId: { userId: uid, courseId }
+            }
+        });
+
+        let expiresAt = null;
+        if (enrollment?.validityValue && enrollment?.validityUnit) {
+            const val = enrollment.validityValue;
+            const unit = enrollment.validityUnit;
+            const date = new Date();
+
+            if (unit === 'DAYS') date.setDate(date.getDate() + val);
+            if (unit === 'MONTHS') date.setMonth(date.getMonth() + val);
+            if (unit === 'YEARS') date.setFullYear(date.getFullYear() + val);
+
+            expiresAt = date;
+        }
+
+        await prisma.enrollment.update({
+            where: {
+                userId_courseId: { userId: uid, courseId }
+            },
+            data: {
+                completedAt,
+                signedAt,
+                expiresAt
+            }
+        });
+
+        revalidatePath('/compliance');
+        revalidatePath(`/compliance/${courseId}`);
+
+        return { success: true };
+    } catch (error: any) {
+        return { success: false, error: error.message };
+    }
+}
+
+export async function getComplianceCourses(userId: string) {
+    try {
+        const uid = userId || "u1";
+
+        // Check if user has ANY enrollments (Lazy Auto-Enroll for existing users)
+        const enrollmentCount = await prisma.enrollment.count({ where: { userId: uid } });
+
+        if (enrollmentCount === 0) {
+            console.log(`[getComplianceCourses] User ${uid} has 0 enrollments. Auto-enrolling in active courses...`);
+            const activeCourses = await prisma.course.findMany({ where: { isActive: true }, select: { id: true } });
+            if (activeCourses.length > 0) {
+                await prisma.enrollment.createMany({
+                    data: activeCourses.map(c => ({
+                        userId: uid,
+                        courseId: c.id,
+                        assignedAt: new Date()
+                    }))
+                });
+            }
+        }
+
         const enrollments = await prisma.enrollment.findMany({
             where: { userId: uid },
             include: {
@@ -36,13 +182,56 @@ export async function getMyCourses(userId: string) {
             }
         });
 
-        const courses = enrollments.map(e => ({
-            ...e.course,
-            assignedAt: e.assignedAt,
-            expiresAt: e.expiresAt
-        }));
+        console.log(`[getComplianceCourses] User: ${uid}, Raw Enrollments: ${enrollments.length}`);
 
-        return { success: true, data: courses };
+        // Filter for compliance only and calculate progress
+        const complianceDocs = [];
+
+        for (const e of enrollments) {
+            if (!e.course.isCompliance) continue;
+
+            const totalTopics = await prisma.topic.count({
+                where: { chapter: { courseId: e.course.id } }
+            });
+
+            const completedTopics = await prisma.userProgress.count({
+                where: {
+                    userId: uid,
+                    topic: { chapter: { courseId: e.course.id } },
+                    completed: true
+                }
+            });
+
+            // Is signed if signedAt is present OR (legacy fallback) all topics done
+            // Moving forward, we rely on signedAt for the explicit signature
+            // But we still track progress for the "Read All" enforcement
+            const isSigned = !!e.signedAt;
+            const progress = totalTopics > 0 ? (completedTopics / totalTopics) * 100 : 0;
+            const allTopicsViewed = totalTopics > 0 && completedTopics === totalTopics;
+
+            const lastProgress = await prisma.userProgress.findFirst({
+                where: {
+                    userId: uid,
+                    topic: { chapter: { courseId: e.course.id } }
+                },
+                orderBy: { lastAccessed: 'desc' },
+                select: { topicId: true }
+            });
+
+            complianceDocs.push({
+                ...e.course,
+                assignedAt: e.assignedAt,
+                completedAt: e.completedAt,
+                signedAt: e.signedAt,
+                isSigned,
+                progress,
+                allTopicsViewed,
+                lastActiveTopicId: lastProgress?.topicId || null,
+                expiresAt: e.expiresAt
+            });
+        }
+
+        return { success: true, data: complianceDocs };
     } catch (error: any) {
         return { success: false, error: error.message };
     }
@@ -81,7 +270,7 @@ export async function getRecentLearning(userId: string) {
         for (const p of progress) {
             // @ts-ignore - TS might complain about nested optional relations if schema types aren't fully regenerated
             const course = p.topic?.chapter?.course;
-            if (course && !seenCourses.has(course.id)) {
+            if (course && !seenCourses.has(course.id) && !course.isCompliance) { // Filter compliance docs
                 seenCourses.add(course.id);
                 uniqueCourses.push({
                     ...course,
@@ -134,7 +323,8 @@ export async function updateCourse(courseId: string, data: any) {
                 category: data.categoryName || "General",
                 subCategoryId: data.subCategoryId,
                 thumbnail: data.thumbnailUrl,
-                isActive: data.isActive
+                isActive: data.isActive,
+                isCompliance: data.isCompliance
             }
         });
         revalidatePath('/admin/upload');

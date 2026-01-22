@@ -30,7 +30,9 @@ export async function POST(req: NextRequest) {
                 expiresAt,
                 hasCertificate: hasCertificate || false,
                 certName,
-                certUrl
+                certUrl,
+                certificateId: body.certificateId || null,
+                quizConfig: body.quizConfig || "5"
             }
         });
 

@@ -71,16 +71,56 @@ Do not include markdown formatting like \`\`\`json. Return raw JSON only.`;
 }
 
 // Shared processing logic
-async function processFile(filePath: string, fileName: string, category: string, customTitle: string, description: string | null, thumbnailUrl: string | null, authorId: string, subCategoryId?: string) {
+async function processFile(filePath: string, fileName: string, category: string, customTitle: string, description: string | null, thumbnailUrl: string | null, authorId: string, subCategoryId?: string, isCompliance: boolean = false) {
     const fileUrl = `/uploads/${path.basename(filePath)}`;
     let text = "";
+    let chapters: any[] = [];
 
     // Read file for extraction
     const buffer = await readFile(filePath);
 
     if (fileName.endsWith('.pdf')) {
-        const data = await pdf(buffer);
-        text = data.text;
+        if (isCompliance) {
+            // COMPLIANCE MODE: Page-by-Page Extraction
+            const options = {
+                pagerender: function (pageData: any) {
+                    const render_options = {
+                        normalizeWhitespace: false,
+                        disableCombineTextItems: false
+                    }
+                    return pageData.getTextContent(render_options)
+                        .then(function (textContent: any) {
+                            let lastY, text = '';
+                            for (let item of textContent.items) {
+                                if (lastY == item.transform[5] || !lastY) {
+                                    text += item.str;
+                                } else {
+                                    text += '\n' + item.str;
+                                }
+                                lastY = item.transform[5];
+                            }
+                            // Inject Delimiter
+                            return text + "\n|||PAGE_BREAK|||\n";
+                        });
+                }
+            }
+            const data = await pdf(buffer, options);
+            const rawPages = data.text.split('|||PAGE_BREAK|||');
+
+            // Create Chapters from Pages (Filter empty last split)
+            chapters = rawPages
+                .filter((p: string) => p.trim().length > 0)
+                .map((pageText: string, index: number) => ({
+                    title: `Page ${index + 1}`,
+                    topics: [{ title: 'Content', content: pageText.trim() }] // Pre-filled content
+                }));
+
+            text = data.text.replace(/\|\|\|PAGE_BREAK\|\|\|/g, '\n\n'); // Clean text for sourceText
+        } else {
+            // STANDARD MODE: Full Text
+            const data = await pdf(buffer);
+            text = data.text;
+        }
     } else if (fileName.endsWith('.docx')) {
         const result = await mammoth.extractRawText({ buffer });
         text = result.value;
@@ -90,9 +130,19 @@ async function processFile(filePath: string, fileName: string, category: string,
         throw new Error(`Unsupported file type: ${fileName}`);
     }
 
-    // AI Process
-    const apiKey = process.env.GROQ_API_KEY || "";
-    const structure = await processWithGroq(text, category, apiKey);
+    let structure: any = {};
+
+    if (isCompliance) {
+        // Skip AI for Compliance
+        structure = {
+            title: customTitle || fileName.replace(/\.[^/.]+$/, ""),
+            chapters: chapters // Use extracted pages
+        };
+    } else {
+        // Standard AI Processing
+        const apiKey = process.env.GROQ_API_KEY || "";
+        structure = await processWithGroq(text, category, apiKey);
+    }
 
     const courseTitle = customTitle || structure.title || fileName.replace(/\.[^/.]+$/, "");
 
@@ -110,18 +160,19 @@ async function processFile(filePath: string, fileName: string, category: string,
             description: description || undefined,
             category: category || 'General',
             subCategoryId: subCategoryId || null,
-            thumbnail: thumbnailUrl || 'https://images.unsplash.com/photo-1516321318423-f06f85e504b3?w=800&q=80',
-            sourceText: text,
+            isCompliance: isCompliance,
+            thumbnail: thumbnailUrl || '/assets/placeholder-course.png',
+            sourceText: text, // Store full text for potential future AI use
             fileUrl: fileUrl,
             authorId: authorId,
             chapters: {
                 create: structure.chapters?.map((ch: any) => ({
                     title: ch.title,
                     topics: {
-                        create: ch.topics?.map((t: string) => ({
-                            title: t,
+                        create: ch.topics?.map((t: any) => ({
+                            title: typeof t === 'string' ? t : t.title, // Handle both string (AI) and object (Compliance)
                             type: 'text',
-                            content: ""
+                            content: typeof t === 'string' ? "" : (t.content || "") // Pre-fill content if available
                         }))
                     }
                 }))
@@ -135,7 +186,7 @@ async function processFile(filePath: string, fileName: string, category: string,
     return {
         id: newCourse.id,
         title: newCourse.title,
-        chapters: structure.chapters // Return for UI preview
+        chapters: structure.chapters
     };
 }
 
@@ -174,6 +225,9 @@ export async function finalizeUpload(formData: FormData) {
         const customTitle = formData.get('title') as string;
         const description = formData.get('description') as string;
         const thumbnailUrl = formData.get('thumbnailUrl') as string;
+        const isCompliance = formData.get('isCompliance') === 'true';
+
+        console.log(`[Ingest] Finalize - Title: ${customTitle}, Thumb: ${thumbnailUrl}, File: ${fileName}`);
 
         const tempDir = path.join(process.cwd(), 'public', 'uploads', 'temp');
         const tempFilePath = path.join(tempDir, fileId);
@@ -191,7 +245,7 @@ export async function finalizeUpload(formData: FormData) {
         const author = await prisma.user.findFirst();
         const authorId = author?.id || "u1";
 
-        const data = await processFile(finalFilePath, finalFileName, category, customTitle, description, thumbnailUrl, authorId, subCategoryId);
+        const data = await processFile(finalFilePath, finalFileName, category, customTitle, description, thumbnailUrl, authorId, subCategoryId, isCompliance);
 
         return { success: true, data };
     } catch (e: any) {

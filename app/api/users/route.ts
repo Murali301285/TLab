@@ -118,9 +118,20 @@ export async function PATCH(req: NextRequest) {
         // Clean up undefined
         Object.keys(dataToUpdate).forEach(key => dataToUpdate[key] === undefined && delete dataToUpdate[key]);
 
-        const updatedUser = await prisma.user.update({
-            where: { id },
-            data: dataToUpdate
+        // Transaction handling for deactivation
+        const updatedUser = await prisma.$transaction(async (tx) => {
+            // If deactivating, unassign any subordinates
+            if (isActive === false) {
+                await tx.user.updateMany({
+                    where: { managerId: id },
+                    data: { managerId: null }
+                });
+            }
+
+            return await tx.user.update({
+                where: { id },
+                data: dataToUpdate
+            });
         });
 
         return NextResponse.json(updatedUser);
