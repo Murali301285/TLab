@@ -5,6 +5,9 @@ import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { ChevronLeft, Send, Sparkles, Languages, Loader2, Bot, User, Mic, Volume2, Play, Pause, Settings, LogOut, Globe, MapPin, ArrowRight, ToggleLeft, ToggleRight, Check } from 'lucide-react';
 import { cn } from '@/lib/utils';
+import { useVoiceInput } from '@/hooks/useVoiceInput';
+import { speakText, VoicePreferences } from '@/utils/voiceUtils';
+import CoachVoiceSettings from '@/components/CoachVoiceSettings';
 
 // --- Constants ---
 const MODES = [
@@ -38,11 +41,20 @@ export default function LanguageCoachPage() {
     const [input, setInput] = useState('');
     const [loading, setLoading] = useState(false);
     const [isExiting, setIsExiting] = useState(false);
+    const lastInputSource = useRef<'text' | 'voice'>('text');
 
     // Audio State
-    const [isMicOpen, setIsMicOpen] = useState(false);
     const [playbackSpeed, setPlaybackSpeed] = useState(1);
     const [speakingLineIdx, setSpeakingLineIdx] = useState<number | null>(null);
+    const [voicePrefs, setVoicePrefs] = useState<VoicePreferences>({ gender: 'female', accent: 'IN' });
+
+    const { isListening, startListening, stopListening } = useVoiceInput({
+        onSpeechEnd: (text) => {
+            lastInputSource.current = 'voice';
+            sendMessage(text);
+        },
+        silenceTimeout: 2000
+    });
 
     const messagesEndRef = useRef<HTMLDivElement>(null);
 
@@ -164,6 +176,22 @@ export default function LanguageCoachPage() {
             const data = await res.json();
             if (data.reply) {
                 setMessages(prev => [...prev, { role: 'assistant', content: data.reply }]);
+
+                if (lastInputSource.current === 'voice') {
+                    // Slight delay to allow state update? No, direct is fine.
+                    // But we need the index.
+                    // newMessages length is tricky because of closure.
+                    // We can just speak the text without highlighting if index is tricky, or calc index.
+                    // prev messages length + 1 (user) + 1 (assistant).
+                    // Actually, let's just speak. Highlight is secondary.
+                    // Or retrieve current length.
+                    // We can't access updated state immediately.
+                    // We'll pass -1 or handleSpeak without index?
+                    // handleSpeak takes idx.
+                    // Let's rely on setSpeakingLineIdx to just work if we pass an index that matches render?
+                    // Safe bet: just speak.
+                    speakText(data.reply, voicePrefs, () => { }, () => { });
+                }
             }
         } catch (e) {
             console.error(e);
@@ -178,11 +206,13 @@ export default function LanguageCoachPage() {
             setSpeakingLineIdx(null);
             return;
         }
-        const utterance = new SpeechSynthesisUtterance(text);
-        utterance.rate = playbackSpeed;
-        utterance.onend = () => setSpeakingLineIdx(null);
-        setSpeakingLineIdx(idx);
-        window.speechSynthesis.speak(utterance);
+
+        speakText(
+            text,
+            voicePrefs,
+            () => setSpeakingLineIdx(idx),
+            () => setSpeakingLineIdx(null)
+        );
     };
 
     // --- Render Components ---
@@ -368,9 +398,13 @@ export default function LanguageCoachPage() {
                         <option value="1.25">1.25x</option>
                     </select>
 
-                    <button onClick={handleEndSession} className="p-2 text-rose-500 hover:bg-rose-50 rounded-lg flex items-center gap-2 text-xs font-bold transition-colors">
-                        <LogOut className="h-4 w-4" /> End
-                    </button>
+                    <div className="flex items-center gap-2">
+                        <CoachVoiceSettings state={voicePrefs} setState={setVoicePrefs} />
+
+                        <button onClick={handleEndSession} className="p-2 text-rose-500 hover:bg-rose-50 rounded-lg flex items-center gap-2 text-xs font-bold transition-colors">
+                            <LogOut className="h-4 w-4" /> End
+                        </button>
+                    </div>
                 </div>
             </header>
 
@@ -406,71 +440,64 @@ export default function LanguageCoachPage() {
             {/* Input Area */}
             <div className="p-4 bg-white border-t border-slate-100">
                 <div className="relative flex items-center gap-2 max-w-4xl mx-auto">
-                    <button
-                        onClick={() => setIsMicOpen(!isMicOpen)}
-                        className={`p-3 rounded-full transition-all ${isMicOpen ? 'bg-red-500 text-white animate-pulse' : 'bg-slate-100 text-slate-500 hover:bg-slate-200'}`}
-                    >
-                        <Mic className="h-5 w-5" />
-                    </button>
+
+                    {/* Mic Button with Animation */}
+                    <div className="relative">
+                        {isListening && (
+                            <>
+                                <div className="absolute inset-0 bg-red-500 rounded-full animate-ping opacity-75"></div>
+                                <div className="absolute -top-12 left-1/2 -translate-x-1/2 bg-slate-900 text-white text-xs px-3 py-1 rounded-full whitespace-nowrap z-50">
+                                    Listening...
+                                </div>
+                            </>
+                        )}
+                        <button
+                            onClick={() => {
+                                if (isListening) {
+                                    stopListening();
+                                } else {
+                                    window.speechSynthesis.cancel();
+                                    startListening();
+                                }
+                            }}
+                            className={`relative p-3 rounded-full transition-all ${isListening ? 'bg-red-500 text-white' : 'bg-slate-100 text-slate-500 hover:bg-slate-200'}`}
+                        >
+                            {isListening ? <div className="h-5 w-5 flex items-center justify-center"><div className="w-2 h-2 bg-white rounded-sm" /></div> : <Mic className="h-5 w-5" />}
+                        </button>
+                    </div>
 
                     <input
                         type="text"
                         value={input}
                         onChange={e => setInput(e.target.value)}
-                        onKeyDown={e => e.key === 'Enter' && sendMessage(input)}
-                        placeholder="Type to practice..."
-                        className="flex-1 py-3 px-5 bg-slate-50 border border-slate-200 rounded-full focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500"
+                        onKeyDown={e => {
+                            if (e.key === 'Enter') {
+                                lastInputSource.current = 'text';
+                                sendMessage(input);
+                            }
+                        }}
+                        placeholder={isListening ? "Listening..." : "Type to practice..."}
+                        className="flex-1 py-3 px-5 bg-slate-50 border border-slate-200 rounded-full focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition-all font-medium text-slate-700"
                     />
 
                     <button
                         disabled={!input.trim() || loading}
-                        onClick={() => sendMessage(input)}
+                        onClick={() => {
+                            lastInputSource.current = 'text';
+                            sendMessage(input);
+                        }}
                         className="p-3 bg-blue-600 text-white rounded-full hover:bg-blue-700 disabled:opacity-50 transition-colors shadow-lg shadow-blue-200"
                     >
                         <Send className="h-5 w-5" />
                     </button>
                 </div>
             </div>
-
-            {/* Quick Voice Handler inside component for compactness */}
-            {isMicOpen && (
-                <div className="absolute bottom-24 left-1/2 -translate-x-1/2 bg-slate-900/90 text-white px-6 py-2 rounded-full backdrop-blur flex items-center gap-3 animate-in fade-in slide-in-from-bottom-2">
-                    <div className="w-2 h-2 bg-red-500 rounded-full animate-ping" />
-                    <span className="text-sm font-medium">Listening... (Say something)</span>
-                </div>
-            )}
         </div>
     );
 
     // --- Speech Recognition Logic ---
-    useEffect(() => {
-        if (!isMicOpen) return;
-
-        // @ts-ignore
-        const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
-        if (!SpeechRecognition) {
-            alert("Browser not supported for voice.");
-            setIsMicOpen(false);
-            return;
-        }
-
-        const recognition = new SpeechRecognition();
-        recognition.continuous = false;
-        recognition.interimResults = false;
-        recognition.lang = 'en-US';
-
-        recognition.onresult = (event: any) => {
-            const transcript = event.results[0][0].transcript;
-            setInput(transcript);
-            setIsMicOpen(false);
-        };
-
-        recognition.checkOnEnd = () => setIsMicOpen(false);
-
-        try { recognition.start(); } catch (e) { }
-
-        return () => { recognition.stop(); };
-    }, [isMicOpen]);
+    // --- Speech Recognition Logic ---
+    // Replaced by useVoiceInput hook
 
     return (
         <div className="min-h-screen bg-slate-50 font-sans">

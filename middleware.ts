@@ -8,8 +8,11 @@ export async function middleware(req: NextRequest) {
     const { pathname } = req.nextUrl;
 
     // Public paths
-    const publicPaths = ['/api/auth/login', '/api/auth/register', '/', '/assets', '/favicon.ico'];
-    if (publicPaths.some(path => pathname.startsWith(path)) || pathname.match(/\.(.*)$/)) {
+    // Public paths
+    const publicPaths = ['/api/auth/login', '/api/auth/register', '/assets', '/favicon.ico'];
+
+    // Explicitly allow root (Login Page)
+    if (pathname === '/' || publicPaths.some(path => pathname.startsWith(path)) || pathname.match(/\.(.*)$/)) {
         return NextResponse.next();
     }
 

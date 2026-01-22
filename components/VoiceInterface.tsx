@@ -36,6 +36,11 @@ export default function VoiceInterface({ onUserSpeak, isAiSpeaking }: VoiceInter
     }, [transcript, listening]);
 
     const handleStart = () => {
+        if (typeof window !== 'undefined' && window.location.protocol === 'http:' && window.location.hostname !== 'localhost' && window.location.hostname !== '127.0.0.1') {
+            const currentOrigin = window.location.origin;
+            alert(`Microphone blocked due to insecure connection (HTTP).\n\nWORKAROUND (Chrome):\n1. Open chrome://flags/#unsafely-treat-insecure-origin-as-secure\n2. Enable it.\n3. Add this URL in the box: ${currentOrigin}\n4. Relaunch Chrome.`);
+            return;
+        }
         resetTranscript();
         SpeechRecognition.startListening({ continuous: true });
     };

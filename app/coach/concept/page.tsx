@@ -6,6 +6,9 @@ import { useRouter } from 'next/navigation';
 import { ChevronLeft, Search, Loader2, Info, ArrowRight, Table, MessageSquare, Send, User, Bot, Play, Pause, Mic, LogOut } from 'lucide-react';
 // @ts-ignore
 import MindMap from '@/components/MindMap';
+import { useVoiceInput } from '@/hooks/useVoiceInput';
+import { speakText, VoicePreferences } from '@/utils/voiceUtils';
+import CoachVoiceSettings from '@/components/CoachVoiceSettings';
 
 interface ChatMessage {
     role: 'user' | 'assistant';
@@ -28,8 +31,39 @@ export default function ConceptPage() {
     const [currentUserId, setCurrentUserId] = useState<string>('');
     const [playbackSpeed, setPlaybackSpeed] = useState(1);
     const [speakingLineIdx, setSpeakingLineIdx] = useState<number | null>(null);
-    const [isMicOpen, setIsMicOpen] = useState(false);
-    const [micTarget, setMicTarget] = useState<'search' | 'chat'>('chat'); // New state to track which input is using mic
+    const [micTarget, setMicTarget] = useState<'search' | 'chat'>('chat');
+    const [voicePrefs, setVoicePrefs] = useState<VoicePreferences>({ gender: 'female', accent: 'IN' });
+    const lastInputSource = useRef<'text' | 'voice'>('text');
+
+    // Handle Speech Result based on target
+    const handleSpeechEnd = (text: string) => {
+        if (!text.trim()) return;
+
+        if (micTarget === 'search') {
+            setTopic(text);
+            // We can't directly call handleSearch as it depends on state that might not be updated yet if we just set it
+            // Actually, we can just call the API logic or triggers.
+            // For safety, let's just set topic and let user click? 
+            // User requested "auto send". 
+            // But handleSearch reads 'topic' state.
+            // Solution: passing text directly to handleSearch would be better, but handleSearch reads state.
+            // I will modify handleSearch to accept optional override.
+
+            // TRIGGERING SEARCH MANUALLY AFTER STATE UPDATE IS TRICKY IN REACT BATCHING
+            // I will use a ref or just call the logic. 
+            // Let's modify handleSearch to take an arg.
+            handleSearch(undefined, text);
+        } else {
+            // Chat
+            lastInputSource.current = 'voice';
+            handleChatSend(undefined, text);
+        }
+    };
+
+    const { isListening, startListening, stopListening } = useVoiceInput({
+        onSpeechEnd: handleSpeechEnd,
+        silenceTimeout: 2000
+    });
 
     const chatEndRef = useRef<HTMLDivElement>(null);
 
@@ -52,39 +86,18 @@ export default function ConceptPage() {
         chatEndRef.current?.scrollIntoView({ behavior: 'smooth' });
     }, [chatMessages]);
 
-    // 3. Speech Recognition Logic
-    useEffect(() => {
-        if (!isMicOpen) return;
-        // @ts-ignore
-        const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
-        if (!SpeechRecognition) {
-            alert("Browser not supported for voice.");
-            setIsMicOpen(false);
-            return;
-        }
-        const recognition = new SpeechRecognition();
-        recognition.continuous = false;
-        recognition.interimResults = false;
-        recognition.lang = 'en-US';
-        recognition.onresult = (event: any) => {
-            const transcript = event.results[0][0].transcript;
-            if (micTarget === 'search') {
-                setTopic(transcript);
-            } else {
-                setChatInput(transcript);
-            }
-            setIsMicOpen(false);
-        };
-        recognition.checkOnEnd = () => setIsMicOpen(false);
-        try { recognition.start(); } catch (e) { }
-        return () => { recognition.stop(); };
-    }, [isMicOpen, micTarget]); // Depend on micTarget
+    // 3. Speech Recognition Logic -> Replaced by Hook
 
 
-    const handleSearch = async (e?: React.FormEvent) => {
+    const handleSearch = async (e?: React.FormEvent, overrideTopic?: string) => {
         if (e) e.preventDefault();
-        if (!topic.trim()) return;
+        const query = overrideTopic || topic;
+        if (!query.trim()) return;
 
+        // Update state to match if override used
+        if (overrideTopic) setTopic(overrideTopic);
+
+        // ... Logic uses 'query' now instead of 'topic' state for the fetch
         setLoading(true);
         setData(null);
         setChatMessages([]);
@@ -97,7 +110,7 @@ export default function ConceptPage() {
             const res = await fetch('/api/ai/concept', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ topic })
+                body: JSON.stringify({ topic: query })
             });
             const response = await res.json();
 
@@ -112,7 +125,7 @@ export default function ConceptPage() {
                         body: JSON.stringify({
                             userId,
                             mode: 'CONCEPT',
-                            config: { topic: topic }
+                            config: { topic: query }
                         })
                     });
                     if (sessionRes.ok) {
@@ -142,28 +155,36 @@ export default function ConceptPage() {
         router.push('/coach');
     };
 
-    const speakText = (text: string, idx: number) => {
-        window.speechSynthesis.cancel();
+    // Updated speakText
+    const speakTextHandler = (text: string, idx: number) => {
         if (speakingLineIdx === idx) {
             setSpeakingLineIdx(null);
+            window.speechSynthesis.cancel();
             return;
         }
-        const utterance = new SpeechSynthesisUtterance(text);
-        utterance.rate = playbackSpeed;
-        utterance.onend = () => setSpeakingLineIdx(null);
-        setSpeakingLineIdx(idx);
-        window.speechSynthesis.speak(utterance);
+
+        speakText(
+            text,
+            voicePrefs,
+            () => setSpeakingLineIdx(idx),
+            () => setSpeakingLineIdx(null)
+        );
     };
 
-    const handleChatSend = async (e?: React.FormEvent) => {
+    const handleChatSend = async (e?: React.FormEvent, overrideMsg?: string) => {
         if (e) e.preventDefault();
-        if (!chatInput.trim() || chatLoading) return;
+        const msg = overrideMsg || chatInput;
 
-        const userMsg = chatInput.trim();
+        if (!msg.trim() || chatLoading) return;
+
+        if (overrideMsg) setChatInput(''); // Clear if auto-sent
+
+        const userMsg = msg.trim();
         setChatInput('');
         const newMsgs = [...chatMessages, { role: 'user', content: userMsg } as ChatMessage];
         setChatMessages(newMsgs);
         setChatLoading(true);
+        if (!overrideMsg) lastInputSource.current = 'text'; // Start text logic unless voice triggered it
 
         try {
             const res = await fetch('/api/ai/concept/chat', {
@@ -182,6 +203,10 @@ export default function ConceptPage() {
             const replyMsg = { role: 'assistant', content: response.reply } as ChatMessage;
 
             setChatMessages(prev => [...prev, replyMsg]);
+
+            if (lastInputSource.current === 'voice') {
+                speakTextHandler(response.reply, newMsgs.length + 1); // approximate index
+            }
 
         } catch (error) {
             console.error(error);
@@ -224,12 +249,17 @@ export default function ConceptPage() {
 
                         <div className="relative shadow-2xl rounded-full bg-white transition-transform hover:scale-[1.02] flex items-center p-2">
                             {/* Mic for Search */}
-                            <button
-                                onClick={() => { setMicTarget('search'); setIsMicOpen(!isMicOpen); }}
-                                className={`p-4 rounded-full transition-all flex-shrink-0 ${isMicOpen && micTarget === 'search' ? 'bg-red-500 text-white animate-pulse' : 'text-slate-400 hover:bg-slate-100'}`}
-                            >
-                                <Mic className="h-6 w-6" />
-                            </button>
+                            <div className="relative">
+                                {isListening && micTarget === 'search' && (
+                                    <div className="absolute inset-0 bg-red-500 rounded-full animate-ping opacity-75"></div>
+                                )}
+                                <button
+                                    onClick={() => { setMicTarget('search'); startListening(); }}
+                                    className={`p-4 rounded-full transition-all flex-shrink-0 relative z-10 ${isListening && micTarget === 'search' ? 'bg-red-500 text-white' : 'text-slate-400 hover:bg-slate-100'}`}
+                                >
+                                    <Mic className="h-6 w-6" />
+                                </button>
+                            </div>
 
                             <input
                                 type="text"
@@ -256,7 +286,7 @@ export default function ConceptPage() {
                             </div>
                         )}
 
-                        {isMicOpen && micTarget === 'search' && (
+                        {isListening && micTarget === 'search' && (
                             <div className="mt-4 text-slate-500 animate-pulse font-medium">Listening... speak your topic</div>
                         )}
                     </div>
@@ -358,6 +388,10 @@ export default function ConceptPage() {
                                     <option value="1">1.0x</option>
                                     <option value="1.25">1.25x</option>
                                 </select>
+
+                                <div className="ml-2">
+                                    <CoachVoiceSettings state={voicePrefs} setState={setVoicePrefs} />
+                                </div>
                             </div>
 
                             <div className="flex-1 overflow-y-auto p-4 md:p-6 bg-slate-50 space-y-6">
@@ -383,7 +417,7 @@ export default function ConceptPage() {
 
                                             {/* Play Button */}
                                             <button
-                                                onClick={() => speakText(msg.content, idx)}
+                                                onClick={() => speakTextHandler(msg.content, idx)}
                                                 className={`text-xs flex items-center gap-1 hover:underline ${msg.role === 'user' ? 'text-slate-400 ml-auto' : 'text-purple-500'
                                                     }`}
                                             >
@@ -405,18 +439,37 @@ export default function ConceptPage() {
                             <div className="p-4 bg-white border-t border-slate-100">
                                 <div className="relative flex items-center gap-2">
                                     {/* Mic */}
-                                    <button
-                                        onClick={() => { setMicTarget('chat'); setIsMicOpen(!isMicOpen); }}
-                                        className={`p-3 rounded-full transition-all ${isMicOpen && micTarget === 'chat' ? 'bg-red-500 text-white animate-pulse' : 'bg-slate-100 text-slate-500 hover:bg-slate-200'}`}
-                                    >
-                                        <Mic className="h-5 w-5" />
-                                    </button>
+                                    {/* Mic */}
+                                    <div className="relative">
+                                        {isListening && micTarget === 'chat' && (
+                                            <div className="absolute inset-0 bg-red-500 rounded-full animate-ping opacity-75"></div>
+                                        )}
+                                        <button
+                                            onClick={() => {
+                                                setMicTarget('chat');
+                                                if (isListening && micTarget === 'chat') {
+                                                    stopListening();
+                                                } else {
+                                                    window.speechSynthesis.cancel();
+                                                    startListening();
+                                                }
+                                            }}
+                                            className={`p-3 rounded-full transition-all relative z-10 ${isListening && micTarget === 'chat' ? 'bg-red-500 text-white' : 'bg-slate-100 text-slate-500 hover:bg-slate-200'}`}
+                                        >
+                                            <Mic className="h-5 w-5" />
+                                        </button>
+                                    </div>
 
                                     <input
                                         type="text"
                                         value={chatInput}
                                         onChange={(e) => setChatInput(e.target.value)}
-                                        onKeyDown={e => e.key === 'Enter' && handleChatSend()}
+                                        onKeyDown={e => {
+                                            if (e.key === 'Enter') {
+                                                lastInputSource.current = 'text';
+                                                handleChatSend();
+                                            }
+                                        }}
                                         placeholder={`Ask a question about ${topic}...`}
                                         className="flex-1 py-3 px-5 bg-slate-50 rounded-full border border-slate-200 focus:border-purple-500 focus:ring-4 focus:ring-purple-500/10 outline-none transition-all"
                                     />

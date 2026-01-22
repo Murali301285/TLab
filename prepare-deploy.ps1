@@ -1,22 +1,35 @@
-# prepare-deploy.ps1
-Write-Host "Preparing Standalone Deployment..." -ForegroundColor Cyan
+$ErrorActionPreference = "Stop"
 
-$source = "d:\Dev\Tlab\tlab-learning-platform"
-$dest = "d:\Dev\Tlab\tlab-learning-platform\.next\standalone"
+Write-Host "Preparing Deployment Folder..." -ForegroundColor Cyan
 
-# 1. Copy Public Folder (Assets, Placeholders)
-Write-Host "Copying 'public' folder..."
-Copy-Item -Path "$source\public\*" -Destination "$dest\public\" -Recurse -Force
+# Define paths
+$root = Get-Location
+$standalone = "$root\.next\standalone"
+$public = "$root\public"
+$static = "$root\.next\static"
+$destStatic = "$root\.next\standalone\.next\static"
+$destPublic = "$root\.next\standalone\public"
 
-# 2. Copy Static Assets (Next.js styles/scripts)
-# Check if .next/static exists in dest, create if not
-if (!(Test-Path "$dest\.next\static")) {
-    New-Item -ItemType Directory -Force -Path "$dest\.next\static" | Out-Null
+# Ensure standalone exists
+if (-not (Test-Path $standalone)) {
+    Write-Error "Standalone folder not found! Run 'npm run build' first."
 }
-Write-Host "Copying '.next/static' folder..."
-Copy-Item -Path "$source\.next\static\*" -Destination "$dest\.next\static\" -Recurse -Force
 
-Write-Host "---------------------------------------------------" -ForegroundColor Green
-Write-Host "✅ Deployment Ready in: $dest" -ForegroundColor Green
-Write-Host "👉 Copy the CONTENTS of '$dest' to your Windows Server."
-Write-Host "---------------------------------------------------"
+# 1. Copy Public Folder
+if (Test-Path $public) {
+    Write-Host "Copying public folder..."
+    Copy-Item -Path $public -Destination $standalone -Recurse -Force
+}
+
+# 2. Copy .next/static Folder to .next/standalone/.next/static
+if (Test-Path $static) {
+    Write-Host "Copying .next/static folder..."
+    # Ensure parent dir exists
+    if (-not (Test-Path "$root\.next\standalone\.next")) {
+        New-Item -ItemType Directory -Path "$root\.next\standalone\.next" | Out-Null
+    }
+    Copy-Item -Path $static -Destination $destStatic -Recurse -Force
+}
+
+Write-Host "Success! The '$standalone' folder is ready for deployment." -ForegroundColor Green
+Write-Host "Action: Zip or Copy '$standalone' to your server."

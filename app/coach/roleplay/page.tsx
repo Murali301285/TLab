@@ -4,6 +4,9 @@ import React, { useState, useEffect, useRef } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { ChevronLeft, MessageSquare, Briefcase, Zap, User, Mic2, Users, Handshake, Award, Play, Pause, Settings, Mic, Send, LogOut } from 'lucide-react';
+import { useVoiceInput } from '@/hooks/useVoiceInput';
+import { speakText, VoicePreferences } from '@/utils/voiceUtils';
+import CoachVoiceSettings from '@/components/CoachVoiceSettings';
 
 type Message = {
     role: 'user' | 'system' | 'assistant';
@@ -41,8 +44,20 @@ export default function RoleplayPage() {
     const [playbackSpeed, setPlaybackSpeed] = useState(1);
     const [speakingLineIdx, setSpeakingLineIdx] = useState<number | null>(null);
     const [currentUserId, setCurrentUserId] = useState<string>('');
-    const [isMicOpen, setIsMicOpen] = useState(false);
     const [loading, setLoading] = useState(false);
+    const lastInputSource = useRef<'text' | 'voice'>('text');
+
+    // Voice Settings
+    const [voicePrefs, setVoicePrefs] = useState<VoicePreferences>({ gender: 'female', accent: 'IN' });
+
+    // New Smart Voice Hook
+    const { isListening, startListening, stopListening, hasBrowserSupport } = useVoiceInput({
+        onSpeechEnd: (text) => {
+            lastInputSource.current = 'voice';
+            sendMessage(text);
+        },
+        silenceTimeout: 2000
+    });
 
     const messagesEndRef = useRef<HTMLDivElement>(null);
 
@@ -65,35 +80,7 @@ export default function RoleplayPage() {
     // Scroll to bottom
     useEffect(() => { messagesEndRef.current?.scrollIntoView({ behavior: "smooth" }); }, [messages]);
 
-    // Speech Recognition Logic (Copied from LanguageCoach)
-    useEffect(() => {
-        if (!isMicOpen) return;
-
-        // @ts-ignore
-        const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
-        if (!SpeechRecognition) {
-            alert("Browser not supported for voice.");
-            setIsMicOpen(false);
-            return;
-        }
-
-        const recognition = new SpeechRecognition();
-        recognition.continuous = false;
-        recognition.interimResults = false;
-        recognition.lang = 'en-US';
-
-        recognition.onresult = (event: any) => {
-            const transcript = event.results[0][0].transcript;
-            setInput(transcript);
-            setIsMicOpen(false);
-        };
-
-        recognition.checkOnEnd = () => setIsMicOpen(false);
-
-        try { recognition.start(); } catch (e) { }
-
-        return () => { recognition.stop(); };
-    }, [isMicOpen]);
+    // Speech Recognition Logic -> Replaced by useVoiceInput hook defined above
 
 
     const handleScenarioSelect = async (id: string) => {
@@ -138,35 +125,27 @@ export default function RoleplayPage() {
         setInput('');
     };
 
-    const speakText = (text: string, idx?: number) => {
-        if (!window.speechSynthesis) return;
-
-        window.speechSynthesis.cancel();
-
+    const handleSpeak = (text: string, idx?: number) => {
+        // Stop if already speaking this line
         if (idx !== undefined && speakingLineIdx === idx) {
             setSpeakingLineIdx(null);
+            window.speechSynthesis.cancel();
             setIsAiSpeaking(false);
             return;
         }
 
-        const utterance = new SpeechSynthesisUtterance(text);
-        utterance.rate = playbackSpeed;
-        utterance.pitch = 1.0;
-
-        const voices = window.speechSynthesis.getVoices();
-        const preferredVoice = voices.find(v => v.name.includes('Google US English')) || voices[0];
-        if (preferredVoice) utterance.voice = preferredVoice;
-
-        utterance.onstart = () => {
-            setIsAiSpeaking(true);
-            if (idx !== undefined) setSpeakingLineIdx(idx);
-        };
-        utterance.onend = () => {
-            setIsAiSpeaking(false);
-            if (idx !== undefined) setSpeakingLineIdx(null);
-        };
-
-        window.speechSynthesis.speak(utterance);
+        speakText(
+            text,
+            voicePrefs,
+            () => { // OnStart
+                setIsAiSpeaking(true);
+                if (idx !== undefined) setSpeakingLineIdx(idx);
+            },
+            () => { // OnEnd
+                setIsAiSpeaking(false);
+                if (idx !== undefined) setSpeakingLineIdx(null);
+            }
+        );
     };
 
     const sendMessage = async (text: string) => {
@@ -199,8 +178,10 @@ export default function RoleplayPage() {
             const assistantMsg = { role: 'assistant', content: data.reply } as Message;
             setMessages(prev => [...prev, assistantMsg]);
 
-            // 4. Speak it
-            speakText(data.reply, newMessages.length);
+            // 4. Speak it ONLY if input was voice
+            if (lastInputSource.current === 'voice') {
+                handleSpeak(data.reply, newMessages.length);
+            }
 
         } catch (err) {
             console.error(err);
@@ -270,6 +251,8 @@ export default function RoleplayPage() {
                         <span className="h-2 w-2 rounded-full bg-cyan-500 animate-pulse"></span>
                         {SCENARIOS.find(s => s.id === scenario)?.title}
                     </div>
+
+                    <CoachVoiceSettings state={voicePrefs} setState={setVoicePrefs} />
                 </div>
 
                 {/* Empty 3rd col to balance center */}
@@ -302,7 +285,7 @@ export default function RoleplayPage() {
 
                             {/* Play Button - Clean Integration */}
                             <button
-                                onClick={() => speakText(m.content, idx)}
+                                onClick={() => handleSpeak(m.content, idx)}
                                 className={`text-xs flex items-center gap-1 hover:underline ${m.role === 'user' ? 'text-slate-400 ml-auto' : 'text-cyan-600'
                                     }`}
                             >
@@ -330,38 +313,56 @@ export default function RoleplayPage() {
             <div className="p-4 bg-white border-t border-slate-100 shrink-0">
                 <div className="relative flex items-center gap-2 max-w-4xl mx-auto">
                     {/* Mic Button */}
-                    <button
-                        onClick={() => setIsMicOpen(!isMicOpen)}
-                        className={`p-3 rounded-full transition-all ${isMicOpen ? 'bg-red-500 text-white animate-pulse' : 'bg-slate-100 text-slate-500 hover:bg-slate-200'}`}
-                    >
-                        <Mic className="h-5 w-5" />
-                    </button>
+                    <div className="relative">
+                        {isListening && (
+                            <>
+                                <div className="absolute inset-0 bg-red-500 rounded-full animate-ping opacity-75"></div>
+                                <div className="absolute -top-12 left-1/2 -translate-x-1/2 bg-slate-900 text-white text-xs px-3 py-1 rounded-full whitespace-nowrap">
+                                    Listening... (Stop speaking to send)
+                                </div>
+                            </>
+                        )}
+                        <button
+                            onClick={() => {
+                                if (isListening) {
+                                    stopListening();
+                                } else {
+                                    window.speechSynthesis.cancel(); // Stop AI speaking
+                                    startListening();
+                                }
+                            }}
+                            className={`relative p-3 rounded-full transition-all ${isListening ? 'bg-red-500 text-white' : 'bg-slate-100 text-slate-500 hover:bg-slate-200'}`}
+                        >
+                            {isListening ? <div className="h-5 w-5 flex items-center justify-center"><div className="w-2 h-2 bg-white rounded-sm" /></div> : <Mic className="h-5 w-5" />}
+                        </button>
+                    </div>
 
                     {/* Text Input */}
                     <input
                         type="text"
                         value={input}
                         onChange={e => setInput(e.target.value)}
-                        onKeyDown={e => e.key === 'Enter' && sendMessage(input)}
-                        placeholder="Type to practice..."
+                        onKeyDown={e => {
+                            if (e.key === 'Enter') {
+                                lastInputSource.current = 'text';
+                                sendMessage(input);
+                            }
+                        }}
+                        placeholder={isListening ? "Listening..." : "Type to practice..."}
                         className="flex-1 py-3 px-5 bg-slate-50 border border-slate-200 rounded-full focus:outline-none focus:ring-2 focus:ring-cyan-500/20 focus:border-cyan-500 transition-all font-medium text-slate-700"
                     />
 
                     {/* Send Button */}
                     <button
                         disabled={!input.trim() || loading}
-                        onClick={() => sendMessage(input)}
+                        onClick={() => {
+                            lastInputSource.current = 'text';
+                            sendMessage(input);
+                        }}
                         className="p-3 bg-cyan-600 text-white rounded-full hover:bg-cyan-700 disabled:opacity-50 transition-colors shadow-lg shadow-cyan-200"
                     >
                         <Send className="h-5 w-5" />
                     </button>
-
-                    {/* Floating mic status if needed, mostly redundant as button pulses */}
-                    {isMicOpen && (
-                        <div className="absolute -top-12 left-1/2 -translate-x-1/2 bg-slate-900 text-white text-xs px-4 py-1.5 rounded-full shadow-lg animate-in fade-in slide-in-from-bottom-2">
-                            Listening...
-                        </div>
-                    )}
                 </div>
             </div>
         </div>
