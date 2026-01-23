@@ -13,10 +13,13 @@
   },
   "dependencies": {
     "@google/generative-ai": "^0.24.1",
+    "@types/dagre": "^0.7.53",
     "@types/marked": "^5.0.2",
+    "@types/three": "^0.182.0",
     "bcryptjs": "^3.0.3",
     "busboy": "^1.6.0",
     "clsx": "^2.1.1",
+    "dagre": "^0.8.5",
     "date-fns": "^4.1.0",
     "framer-motion": "^12.23.25",
     "groq-sdk": "^0.37.0",
@@ -35,14 +38,17 @@
     "react-markdown": "^10.1.0",
     "react-select": "^5.10.2",
     "react-speech-recognition": "^4.0.1",
+    "reactflow": "^11.11.4",
     "regenerator-runtime": "^0.14.1",
     "remark-gfm": "^4.0.1",
     "sharp": "^0.34.5",
-    "tailwind-merge": "^3.4.0"
+    "tailwind-merge": "^3.4.0",
+    "three": "^0.182.0"
   },
   "devDependencies": {
     "@prisma/client": "^5.19.1",
     "@tailwindcss/postcss": "^4",
+    "@tailwindcss/typography": "^0.5.19",
     "@types/bcryptjs": "^2.4.6",
     "@types/busboy": "^1.5.4",
     "@types/node": "^20",

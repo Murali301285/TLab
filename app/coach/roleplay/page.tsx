@@ -4,9 +4,10 @@ import React, { useState, useEffect, useRef } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { ChevronLeft, MessageSquare, Briefcase, Zap, User, Mic2, Users, Handshake, Award, Play, Pause, Settings, Mic, Send, LogOut } from 'lucide-react';
+import CoachVoiceSettings from '@/components/CoachVoiceSettings';
 import { useVoiceInput } from '@/hooks/useVoiceInput';
 import { speakText, VoicePreferences } from '@/utils/voiceUtils';
-import CoachVoiceSettings from '@/components/CoachVoiceSettings';
+
 
 type Message = {
     role: 'user' | 'system' | 'assistant';
@@ -80,6 +81,15 @@ export default function RoleplayPage() {
     // Scroll to bottom
     useEffect(() => { messagesEndRef.current?.scrollIntoView({ behavior: "smooth" }); }, [messages]);
 
+    // Cleanup Audio on Unmount
+    useEffect(() => {
+        return () => {
+            window.speechSynthesis.cancel();
+            setIsAiSpeaking(false);
+            setSpeakingLineIdx(null);
+        };
+    }, []);
+
     // Speech Recognition Logic -> Replaced by useVoiceInput hook defined above
 
 
@@ -109,7 +119,10 @@ export default function RoleplayPage() {
     };
 
     const handleEndSession = async () => {
+        window.speechSynthesis.cancel();
         if (!confirm("Are you sure you want to exit? Chat history will be deleted.")) return;
+
+        window.speechSynthesis.cancel(); // Double check
 
         if (sessionId) {
             await fetch('/api/coach/session', {
@@ -123,6 +136,10 @@ export default function RoleplayPage() {
         setMessages([]);
         setSessionId(null);
         setInput('');
+
+        // Ensure state is cleared
+        setIsAiSpeaking(false);
+        setSpeakingLineIdx(null);
     };
 
     const handleSpeak = (text: string, idx?: number) => {
@@ -195,9 +212,15 @@ export default function RoleplayPage() {
         return (
             <div className="min-h-screen bg-slate-50 p-6 flex flex-col items-center justify-center">
                 <div className="max-w-4xl w-full">
-                    <Link href="/coach" className="flex items-center gap-2 text-slate-500 hover:text-slate-900 mb-8 transition-colors">
+                    <button
+                        onClick={() => {
+                            window.speechSynthesis.cancel();
+                            router.push('/coach');
+                        }}
+                        className="flex items-center gap-2 text-slate-500 hover:text-slate-900 mb-8 transition-colors"
+                    >
                         <ChevronLeft className="h-5 w-5" /> Back to Coach
-                    </Link>
+                    </button>
 
                     <h1 className="text-4xl font-bold text-slate-900 mb-4 text-center">Choose Your Challenge</h1>
                     <p className="text-slate-500 text-center mb-12 text-lg">Select a scenario to start your voice roleplay session.</p>
@@ -247,12 +270,12 @@ export default function RoleplayPage() {
                         <option value="1.25">1.25x</option>
                     </select>
 
+                    {/* Voice Settings Removed */}
+
                     <div className="font-bold text-slate-900 flex items-center gap-2 text-sm">
                         <span className="h-2 w-2 rounded-full bg-cyan-500 animate-pulse"></span>
                         {SCENARIOS.find(s => s.id === scenario)?.title}
                     </div>
-
-                    <CoachVoiceSettings state={voicePrefs} setState={setVoicePrefs} />
                 </div>
 
                 {/* Empty 3rd col to balance center */}

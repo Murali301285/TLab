@@ -74,24 +74,26 @@ export async function POST(req: NextRequest) {
             case 'smart_notes': // The main content view
             case 'initial_content':
                 systemPrompt = `You are an expert professor. Create comprehensive, engaging "Smart Notes" for the provided topic based *strictly* on the context.
-                styles: Use **Markdown** formatting. NO HTML tags. NO Emojis.
+                
+                CRITICAL INSTRUCTION: DO NOT USE EMOJIS. Content must be professional and clean.
+
                 Structure:
                 - Use # (H1) for the Main Topic.
-                - Use ## (H2) for Key Sections.
-                - Use ### (H3) for sub-sections.
-                - Use **Bold** for key terms.
-                - Use *Bullet points* for lists.
-                - Use > for important quotes or takeaways.
-                - Separate paragraphs with double newlines.
-                
-                Content Requirements:
-                - Introduction
-                - Key Concepts (Bullet points)
-                - Detailed Analysis (Broken into H2/H3 sections)
-                - Real-world Application
-                
-                IMPORTANT: Do NOT use Emojis. Do NOT use HTML tags (like <h3>, <p>, etc). Return ONLY valid Markdown string.`;
-                userPrompt = `Context: ${safeContext}\n\nWrite Smart Notes (in Markdown) for: ${topic?.title || topicTitle}`;
+                - Use ## (H2) for Sections.
+                - Use ### (H3) for Sub-sections.
+                - Use **Bold** for emphasis.
+                - Use > for key takeaways or quotes.
+                - Use lists (-) for features/steps.
+
+                Required Sections:
+                1. ## Executive Summary (TL;DR)
+                2. ## Core Concepts
+                3. ## Detailed Analysis
+                4. ## Real-World Application
+                5. ## Checklist / Key Takeaways
+
+                Format: Return ONLY valid Markdown. NO HTML. NO Emojis.`;
+                userPrompt = `Context: ${safeContext}\n\nWrite structured Smart Notes (in Markdown) for: ${topic?.title || topicTitle}. Remember: NO Emojis.`;
                 break;
 
             case 'summary':

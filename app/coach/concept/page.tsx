@@ -3,12 +3,12 @@
 import React, { useState, useRef, useEffect } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
-import { ChevronLeft, Search, Loader2, Info, ArrowRight, Table, MessageSquare, Send, User, Bot, Play, Pause, Mic, LogOut } from 'lucide-react';
+import { ChevronLeft, Search, Loader2, Info, ArrowRight, Table, MessageSquare, Send, User, Bot, Play, Pause, Mic, LogOut, RotateCcw } from 'lucide-react';
 // @ts-ignore
 import MindMap from '@/components/MindMap';
 import { useVoiceInput } from '@/hooks/useVoiceInput';
 import { speakText, VoicePreferences } from '@/utils/voiceUtils';
-import CoachVoiceSettings from '@/components/CoachVoiceSettings';
+
 
 interface ChatMessage {
     role: 'user' | 'assistant';
@@ -32,7 +32,7 @@ export default function ConceptPage() {
     const [playbackSpeed, setPlaybackSpeed] = useState(1);
     const [speakingLineIdx, setSpeakingLineIdx] = useState<number | null>(null);
     const [micTarget, setMicTarget] = useState<'search' | 'chat'>('chat');
-    const [voicePrefs, setVoicePrefs] = useState<VoicePreferences>({ gender: 'female', accent: 'IN' });
+    const voicePrefs: VoicePreferences = { gender: 'female', accent: 'IN' };
     const lastInputSource = useRef<'text' | 'voice'>('text');
 
     // Handle Speech Result based on target
@@ -155,6 +155,32 @@ export default function ConceptPage() {
         router.push('/coach');
     };
 
+    const handleReset = async () => {
+        if (sessionId) {
+            if (!confirm("Start a new topic? Current session history will be lost.")) return;
+            // Optionally close session in background
+            try {
+                await fetch('/api/coach/session', {
+                    method: 'PATCH',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ sessionId })
+                });
+            } catch (e) { }
+        } else if (data) {
+            if (!confirm("Clear current visualization and start over?")) return;
+        }
+
+        // Reset State
+        setSessionId(null);
+        setData(null);
+        setTopic('');
+        setChatMessages([]);
+        setSpeakingLineIdx(null);
+        window.speechSynthesis.cancel();
+        // Reset mic target default
+        setMicTarget('chat');
+    };
+
     // Updated speakText
     const speakTextHandler = (text: string, idx: number) => {
         if (speakingLineIdx === idx) {
@@ -226,10 +252,30 @@ export default function ConceptPage() {
                     <h1 className="font-bold text-lg hidden md:block">Visual Concept Coach</h1>
                 </div>
 
-                {sessionId && (
-                    <button onClick={handleEndSession} className="flex items-center gap-2 text-rose-400 hover:text-rose-300 transition-colors text-sm font-bold">
-                        <LogOut className="h-4 w-4" /> End Session
-                    </button>
+                {(sessionId || speakingLineIdx !== null) && (
+                    <div className="flex items-center gap-2">
+                        {(speakingLineIdx !== null) && (
+                            <button
+                                onClick={() => {
+                                    window.speechSynthesis.cancel();
+                                    setSpeakingLineIdx(null);
+                                }}
+                                className="flex items-center gap-2 text-rose-300 hover:text-rose-100 transition-colors text-sm font-bold bg-white/10 px-3 py-1 rounded-full mr-2"
+                            >
+                                <Pause className="h-4 w-4" /> Stop Audio
+                            </button>
+                        )}
+                        {sessionId && (
+                            <button onClick={handleReset} className="flex items-center gap-2 text-indigo-300 hover:text-white transition-colors text-sm font-bold mr-4">
+                                <RotateCcw className="h-4 w-4" /> New Topic
+                            </button>
+                        )}
+                        {sessionId && (
+                            <button onClick={handleEndSession} className="flex items-center gap-2 text-rose-400 hover:text-rose-300 transition-colors text-sm font-bold">
+                                <LogOut className="h-4 w-4" /> End Session
+                            </button>
+                        )}
+                    </div>
                 )}
             </div>
 
@@ -389,9 +435,7 @@ export default function ConceptPage() {
                                     <option value="1.25">1.25x</option>
                                 </select>
 
-                                <div className="ml-2">
-                                    <CoachVoiceSettings state={voicePrefs} setState={setVoicePrefs} />
-                                </div>
+
                             </div>
 
                             <div className="flex-1 overflow-y-auto p-4 md:p-6 bg-slate-50 space-y-6">

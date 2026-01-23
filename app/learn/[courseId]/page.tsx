@@ -13,7 +13,7 @@ import TextSelectionHandler from '@/components/TextSelectionHandler';
 import CourseChatWidget from '@/components/CourseChatWidget';
 import AIFeaturePanel from '@/components/AIFeaturePanel';
 import {
-    ArrowLeft, ArrowRight, Award, BookOpen, CheckCircle, ChevronLeft, ChevronRight, Circle, Clock, FileText, BrainCircuit, Loader2, Menu, MessageSquare, MoreVertical, Pause, Pencil, Play, Save, Settings, Share2, Sparkles, Square, Volume2, X, Mic, Lightbulb, Network, CheckSquare, Layers, Presentation, Lock as MdLock
+    ArrowLeft, ArrowRight, Award, BookOpen, CheckCircle, ChevronLeft, ChevronRight, Circle, Clock, FileText, BrainCircuit, Loader2, Menu, MessageSquare, MoreVertical, Pause, Pencil, Play, Save, Settings, Share2, Sparkles, Square, Volume2, X, Mic, Lightbulb, Network, CheckSquare, Layers, Presentation, Lock as MdLock, Copy
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import ProfileDropdown from '@/components/ProfileDropdown';
@@ -35,7 +35,7 @@ export default function CoursePlayer() {
     const [allCourses, setAllCourses] = useState<any[]>([]);
     const [course, setCourse] = useState<any>(null);
     const [activeTopicId, setActiveTopicId] = useState<string>('');
-    const [activeTab, setActiveTab] = useState<'summary' | 'mindmap' | 'quiz' | 'flashcards' | 'explain' | 'podcast' | 'simplify' | 'visualize'>('summary');
+    const [activeTab, setActiveTab] = useState<'visualize' | 'mindmap' | 'quiz' | 'flashcards' | 'explain' | 'podcast' | 'simplify' | 'scrollytelling'>('visualize');
     const [aiSidebarOpen, setAiSidebarOpen] = useState(true);
     const [aiSidebarWidth, setAiSidebarWidth] = useState(800); // Default placeholder
     const [isResizing, setIsResizing] = useState(false);
@@ -846,9 +846,7 @@ export default function CoursePlayer() {
                         {/* Secondary Header (Topic & Controls) */}
                         <div className="h-14 border-b border-slate-200 bg-slate-50/50 flex items-center justify-between px-6 shrink-0 z-10">
                             <div className="flex items-center gap-4">
-                                <h1 className="text-lg font-bold text-slate-900">
-                                    {activeTopic?.title}
-                                </h1>
+                                {/* Title removed as per request (displayed in content) */}
                             </div>
 
                             <div className="flex items-center gap-4">
@@ -1008,47 +1006,91 @@ export default function CoursePlayer() {
                                                     </div>
                                                 </div>
                                             ) : (
-                                                <div className="prose prose-slate max-w-none 
-                                                prose-headings:font-bold prose-headings:text-slate-800 
-                                                prose-h1:text-3xl prose-h2:text-2xl prose-h2:mt-8 prose-h2:mb-4
-                                                prose-h3:text-xl prose-h3:text-cyan-700 prose-h3:mt-6
-                                                prose-p:text-slate-600 prose-p:leading-relaxed prose-p:my-4
-                                                prose-li:marker:text-cyan-500 prose-li:text-slate-600
-                                                prose-strong:text-slate-900 prose-strong:font-bold
-                                                prose-a:text-cyan-600 hover:prose-a:text-cyan-700
-                                                prose-img:rounded-xl prose-img:shadow-lg prose-img:mx-auto prose-img:my-8
-                                                prose-blockquote:border-l-4 prose-blockquote:border-cyan-500 prose-blockquote:bg-cyan-50 prose-blockquote:py-2 prose-blockquote:px-4 prose-blockquote:rounded-r-lg prose-blockquote:not-italic
-                                            ">
-                                                    <TextSelectionHandler
-                                                        onExplain={(text) => {
-                                                            setSelectedText(text);
-                                                            setActiveTab('explain');
-                                                            setAiSidebarOpen(true);
-                                                        }}
-                                                        onVisualize={(text) => {
-                                                            setSelectedText(text);
-                                                            setActiveTab('visualize');
-                                                            setAiSidebarOpen(true);
-                                                        }}
-                                                    >
-                                                        {activeTopic?.type === 'video' ? (
-                                                            <div className="aspect-video bg-black rounded-xl overflow-hidden shadow-lg mb-8">
-                                                                <iframe
-                                                                    src={(activeTopic.content as any).videoUrl}
-                                                                    className="w-full h-full"
-                                                                    allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
-                                                                    allowFullScreen
+                                                <div className="relative group/notes">
+                                                    {/* Smart Notes Toolbar */}
+                                                    <div className="absolute top-4 right-4 z-20 flex items-center gap-2 opacity-0 group-hover/notes:opacity-100 transition-opacity duration-300 bg-white/90 backdrop-blur-md p-1.5 rounded-full shadow-sm border border-slate-200 animate-in slide-in-from-top-2">
+                                                        <button
+                                                            onClick={() => {
+                                                                const el = document.getElementById('smart-notes-content');
+                                                                if (el) {
+                                                                    const currentSize = parseFloat(getComputedStyle(el).fontSize);
+                                                                    el.style.fontSize = `${Math.max(14, currentSize - 2)}px`;
+                                                                }
+                                                            }}
+                                                            className="p-1.5 text-slate-500 hover:text-cyan-600 hover:bg-cyan-50 rounded-full transition-colors"
+                                                            title="Decrease Font Size"
+                                                        >
+                                                            <div className="text-xs font-bold w-4 h-4 flex items-center justify-center">A-</div>
+                                                        </button>
+                                                        <button
+                                                            onClick={() => {
+                                                                const el = document.getElementById('smart-notes-content');
+                                                                if (el) {
+                                                                    const currentSize = parseFloat(getComputedStyle(el).fontSize);
+                                                                    el.style.fontSize = `${Math.min(24, currentSize + 2)}px`;
+                                                                }
+                                                            }}
+                                                            className="p-1.5 text-slate-500 hover:text-cyan-600 hover:bg-cyan-50 rounded-full transition-colors"
+                                                            title="Increase Font Size"
+                                                        >
+                                                            <div className="text-xs font-bold w-4 h-4 flex items-center justify-center">A+</div>
+                                                        </button>
+                                                        <div className="w-px h-4 bg-slate-200" />
+                                                        <button
+                                                            onClick={() => {
+                                                                navigator.clipboard.writeText(activeTopic?.content?.text || "");
+                                                            }}
+                                                            className="p-1.5 text-slate-500 hover:text-cyan-600 hover:bg-cyan-50 rounded-full transition-colors"
+                                                            title="Copy to Clipboard"
+                                                        >
+                                                            <Copy className="h-4 w-4" />
+                                                        </button>
+                                                    </div>
+
+                                                    <div
+                                                        id="smart-notes-content"
+                                                        className="prose prose-slate max-w-none animate-in fade-in duration-700 p-2 md:p-4 transition-all
+                                                        prose-headings:font-bold prose-headings:tracking-tight
+                                                        prose-h1:text-4xl prose-h1:bg-gradient-to-r prose-h1:from-slate-900 prose-h1:to-slate-700 prose-h1:bg-clip-text prose-h1:text-transparent prose-h1:mb-8
+                                                        prose-h2:text-2xl prose-h2:text-slate-800 prose-h2:border-b prose-h2:border-slate-100 prose-h2:pb-2 prose-h2:mt-10
+                                                        prose-h3:text-lg prose-h3:font-semibold prose-h3:text-cyan-700 prose-h3:mt-6 cursor-default
+                                                        prose-p:text-slate-600 prose-p:leading-8 prose-p:text-lg
+                                                        prose-li:text-slate-700 prose-li:marker:text-cyan-500
+                                                        prose-strong:text-slate-900 prose-strong:font-bold
+                                                        prose-blockquote:border-l-4 prose-blockquote:border-cyan-400 prose-blockquote:bg-cyan-50/50 prose-blockquote:backdrop-blur-sm prose-blockquote:py-4 prose-blockquote:px-6 prose-blockquote:rounded-r-xl prose-blockquote:italic prose-blockquote:not-italic
+                                                        prose-img:rounded-2xl prose-img:shadow-xl prose-img:border prose-img:border-slate-100
+                                                    ">
+                                                        <TextSelectionHandler
+                                                            onExplain={(text) => {
+                                                                setSelectedText(text);
+                                                                setActiveTab('explain');
+                                                                setAiSidebarOpen(true);
+                                                            }}
+                                                            onVisualize={(text) => {
+                                                                setSelectedText(text);
+                                                                setActiveTab('visualize');
+                                                                setAiSidebarOpen(true);
+                                                            }}
+                                                        >
+                                                            {activeTopic?.type === 'video' ? (
+                                                                <div className="aspect-video bg-black rounded-xl overflow-hidden shadow-lg mb-8">
+                                                                    <iframe
+                                                                        src={(activeTopic.content as any).videoUrl}
+                                                                        className="w-full h-full"
+                                                                        allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
+                                                                        allowFullScreen
+                                                                    />
+                                                                </div>
+                                                            ) : (
+                                                                <div
+                                                                    dangerouslySetInnerHTML={{
+                                                                        __html: processedContent || (activeTopic?.content?.text ? marked.parse(activeTopic.content.text) as string : "")
+                                                                    }}
+                                                                    className="min-h-[200px]"
                                                                 />
-                                                            </div>
-                                                        ) : (
-                                                            <div
-                                                                dangerouslySetInnerHTML={{
-                                                                    __html: processedContent || (activeTopic?.content?.text ? marked.parse(activeTopic.content.text) as string : "")
-                                                                }}
-                                                                className="min-h-[200px]"
-                                                            />
-                                                        )}
-                                                    </TextSelectionHandler>
+                                                            )}
+                                                        </TextSelectionHandler>
+                                                    </div>
                                                 </div>
                                             )
                                         ) : (

@@ -13,6 +13,11 @@ export function useVoiceInput({ onSpeechEnd, silenceTimeout = 2000 }: UseVoiceIn
     const recognitionRef = useRef<any>(null);
     const silenceTimerRef = useRef<NodeJS.Timeout | null>(null);
 
+    const onSpeechEndRef = useRef(onSpeechEnd);
+    useEffect(() => {
+        onSpeechEndRef.current = onSpeechEnd;
+    }, [onSpeechEnd]);
+
     // Initialize Recognition
     useEffect(() => {
         if (typeof window === 'undefined') return;
@@ -71,7 +76,9 @@ export function useVoiceInput({ onSpeechEnd, silenceTimeout = 2000 }: UseVoiceIn
                 if (currentText.trim()) {
                     silenceTimerRef.current = setTimeout(() => {
                         recognition.stop();
-                        onSpeechEnd(currentText);
+                        if (onSpeechEndRef.current) {
+                            onSpeechEndRef.current(currentText);
+                        }
                     }, silenceTimeout);
                 }
             };
@@ -85,7 +92,7 @@ export function useVoiceInput({ onSpeechEnd, silenceTimeout = 2000 }: UseVoiceIn
             if (silenceTimerRef.current) clearTimeout(silenceTimerRef.current);
             if (recognitionRef.current) recognitionRef.current.stop();
         };
-    }, [onSpeechEnd, silenceTimeout]);
+    }, []); // Empty dependency ensures recognition is initialized once and persists
 
     const startListening = useCallback(() => {
         if (!recognitionRef.current) {

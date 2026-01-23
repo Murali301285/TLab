@@ -7,7 +7,7 @@ import { ChevronLeft, Send, Sparkles, Languages, Loader2, Bot, User, Mic, Volume
 import { cn } from '@/lib/utils';
 import { useVoiceInput } from '@/hooks/useVoiceInput';
 import { speakText, VoicePreferences } from '@/utils/voiceUtils';
-import CoachVoiceSettings from '@/components/CoachVoiceSettings';
+
 
 // --- Constants ---
 const MODES = [
@@ -46,7 +46,7 @@ export default function LanguageCoachPage() {
     // Audio State
     const [playbackSpeed, setPlaybackSpeed] = useState(1);
     const [speakingLineIdx, setSpeakingLineIdx] = useState<number | null>(null);
-    const [voicePrefs, setVoicePrefs] = useState<VoicePreferences>({ gender: 'female', accent: 'IN' });
+    const voicePrefs: VoicePreferences = { gender: 'female', accent: 'IN' };
 
     const { isListening, startListening, stopListening } = useVoiceInput({
         onSpeechEnd: (text) => {
@@ -154,6 +154,28 @@ export default function LanguageCoachPage() {
         router.push('/coach');
     };
 
+    const getSpeechLanguage = () => {
+        // If we want the AI to speak in the Target Language (Learning English -> French)
+        // OR in the Regional Language (Learning English -> Hindi explanation)
+        // The AI output is usually mixed. But if `config.outputLang` is 'Target', it is purely the target/regional lang.
+
+        // HOWEVER, the `sendMessage` loop below handles the reply.
+        // If the mode is 'Regional', the AI is acting as a "Hindi Coach" helping with English? 
+        // Or "English Coach" explaining in Hindi?
+        // Usually: user speaks English, AI replies in Hindi/Mixed.
+
+        // Simpler Logic: 
+        // If we are in Regional Mode, let's assume the default "Assistant" voice should match the regional language 
+        // IF the text is not English. But the AI might mix "English" terms.
+        // `voiceUtils` handles fallback. If we say "Hi-IN", it often reads English okay too.
+
+        if (config.category === 'Regional' && config.language) return config.language;
+        if (mode === 'TRANSLATE' && config.targetLang) return config.targetLang;
+        if (config.category === 'International' && config.language) return config.language;
+
+        return undefined; // Default to Voice Preference (English)
+    };
+
     const sendMessage = async (text: string) => {
         if (!text.trim() || loading || !sessionId) return;
 
@@ -178,19 +200,13 @@ export default function LanguageCoachPage() {
                 setMessages(prev => [...prev, { role: 'assistant', content: data.reply }]);
 
                 if (lastInputSource.current === 'voice') {
-                    // Slight delay to allow state update? No, direct is fine.
-                    // But we need the index.
-                    // newMessages length is tricky because of closure.
-                    // We can just speak the text without highlighting if index is tricky, or calc index.
-                    // prev messages length + 1 (user) + 1 (assistant).
-                    // Actually, let's just speak. Highlight is secondary.
-                    // Or retrieve current length.
-                    // We can't access updated state immediately.
-                    // We'll pass -1 or handleSpeak without index?
-                    // handleSpeak takes idx.
-                    // Let's rely on setSpeakingLineIdx to just work if we pass an index that matches render?
-                    // Safe bet: just speak.
-                    speakText(data.reply, voicePrefs, () => { }, () => { });
+                    speakText(
+                        data.reply,
+                        voicePrefs,
+                        () => { },
+                        () => { },
+                        getSpeechLanguage()
+                    );
                 }
             }
         } catch (e) {
@@ -211,7 +227,8 @@ export default function LanguageCoachPage() {
             text,
             voicePrefs,
             () => setSpeakingLineIdx(idx),
-            () => setSpeakingLineIdx(null)
+            () => setSpeakingLineIdx(null),
+            getSpeechLanguage()
         );
     };
 
@@ -399,8 +416,6 @@ export default function LanguageCoachPage() {
                     </select>
 
                     <div className="flex items-center gap-2">
-                        <CoachVoiceSettings state={voicePrefs} setState={setVoicePrefs} />
-
                         <button onClick={handleEndSession} className="p-2 text-rose-500 hover:bg-rose-50 rounded-lg flex items-center gap-2 text-xs font-bold transition-colors">
                             <LogOut className="h-4 w-4" /> End
                         </button>
