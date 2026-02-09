@@ -10,15 +10,13 @@ export function processHtmlForSpeech(html: string): { processedHtml: string; sen
     const parser = new DOMParser();
     const doc = parser.parseFromString(html, 'text/html');
     const sentences: string[] = [];
-    let sentenceCount = 0;
 
-    function processNode(node: Node) {
+    function processNode(node: Node, parent: Node | null) {
         if (node.nodeType === Node.TEXT_NODE) {
             const text = node.textContent || '';
             if (text.trim().length === 0) return;
 
-            // Split by sentence delimiters, keeping delimiters
-            // Regex matches: non-delimiters + delimiter
+            // Split by sentence delimiters
             const parts = text.match(/[^.?!]+[.?!]+[\])'"]*|[^.?!]+$/g);
 
             if (parts && parts.length > 0) {
@@ -28,32 +26,37 @@ export function processHtmlForSpeech(html: string): { processedHtml: string; sen
                     const cleanPart = part.trim();
                     if (cleanPart.length > 0) {
                         const span = document.createElement('span');
-                        span.id = `s-${sentenceCount}`;
+                        span.id = `s-${sentences.length}`; // Use array length for robust indexing
                         span.className = 'speech-sentence transition-colors duration-300 rounded px-0.5';
-                        span.textContent = part; // Use original part to keep spacing? No, textContent is safe.
-                        // Actually we need to preserve leading/trailing whitespace from the split
-                        // But for simplicity in this V1, let's just wrap the trimmed content
-                        // Re-adding space which might be lost
+                        // Re-add space logic if needed, but for now wrap part directly
+                        span.textContent = part;
 
                         fragment.appendChild(span);
                         sentences.push(cleanPart);
-                        sentenceCount++;
                     } else {
-                        // Whitespace only
                         fragment.appendChild(document.createTextNode(part));
                     }
                 });
 
-                node.parentNode?.replaceChild(fragment, node);
+                if (parent) {
+                    parent.replaceChild(fragment, node);
+                }
             }
         } else if (node.nodeType === Node.ELEMENT_NODE) {
             // Recursively process children
-            // Convert to array first because childNodes list changes as we replace nodes
-            Array.from(node.childNodes).forEach(processNode);
+            Array.from(node.childNodes).forEach(child => processNode(child, node));
         }
     }
 
-    processNode(doc.body);
+    try {
+        // Start processing children of body. 
+        // We do NOT process body itself as a text node, so we iterate its children.
+        Array.from(doc.body.childNodes).forEach(child => processNode(child, doc.body));
+    } catch (e) {
+        console.error("Speech processing error", e);
+        return { processedHtml: html, sentences: [] }; // Fallback to original
+    }
+
 
     return {
         processedHtml: doc.body.innerHTML,

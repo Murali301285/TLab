@@ -12,6 +12,7 @@ export async function GET(req: NextRequest) {
                 id: true,
                 name: true,
                 email: true,
+                createdAt: true,
                 role: true,
                 managerId: true,
                 department: true,
@@ -19,6 +20,7 @@ export async function GET(req: NextRequest) {
                 enrollments: {
                     select: {
                         courseId: true,
+                        status: true
                     }
                 },
                 progress: {
@@ -34,7 +36,10 @@ export async function GET(req: NextRequest) {
             ...user,
             department: user.department || 'General',
             status: user.isActive ? 'active' : 'inactive',
-            assignedCourses: user.enrollments.map((e: any) => e.courseId),
+            assignedCourses: user.enrollments.map((e: any) => ({
+                courseId: e.courseId,
+                status: e.status
+            })),
             completedTopics: user.progress.filter((p: any) => p.completed).map((p: any) => p.topicId)
         }));
 

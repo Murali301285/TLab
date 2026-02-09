@@ -15,6 +15,7 @@ interface User {
 interface AuthContextType {
     user: User | null;
     isLoading: boolean;
+    authError?: string | null; // New
     login: (token: string) => void; // Token handling is cookie-based, but we might refresh state
     logout: () => void;
 }
@@ -30,6 +31,7 @@ export const useAuth = () => useContext(AuthContext);
 
 export function AuthProvider({ children }: { children: React.ReactNode }) {
     const [user, setUser] = useState<User | null>(null);
+    const [authError, setAuthError] = useState<string | null>(null); // New state
     const [isLoading, setIsLoading] = useState(true);
     const router = useRouter();
 
@@ -38,12 +40,18 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
             const res = await fetch('/api/auth/me');
             if (res.ok) {
                 const data = await res.json();
+                console.log("[AuthProvider] /api/auth/me response:", data);
                 setUser(data.user);
+                if (data.error) setAuthError(data.error); // Set error if present
+                else setAuthError(null);
             } else {
+                console.warn("[AuthProvider] /api/auth/me returned non-OK status:", res.status);
                 setUser(null);
+                setAuthError(`HTTP Error: ${res.status}`);
             }
-        } catch (error) {
+        } catch (error: any) {
             setUser(null);
+            setAuthError(error.message);
         } finally {
             setIsLoading(false);
         }
@@ -70,7 +78,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     };
 
     return (
-        <AuthContext.Provider value={{ user, isLoading, login, logout }}>
+        <AuthContext.Provider value={{ user, isLoading, login, logout, authError }}>
             {children}
         </AuthContext.Provider>
     );

@@ -17,7 +17,8 @@ import {
     Plus,
     Bookmark,
     Trash2,
-    CheckSquare
+    CheckSquare,
+    Lock
 } from 'lucide-react';
 import QuizHistoryList from '@/components/quiz/QuizHistoryList';
 import CertificateCard from '@/components/CertificateCard';
@@ -26,6 +27,7 @@ import { format } from 'date-fns';
 import ProfileDropdown from '@/components/ProfileDropdown';
 import { useAuth } from '@/components/AuthProvider';
 import { getMyCourses } from '@/app/actions/courses';
+import PageLoader from '@/components/PageLoader';
 
 export default function MyLearningPage() {
     const [activeTab, setActiveTab] = useState<'courses' | 'library' | 'completed' | 'quizzes' | 'certificates'>('courses');
@@ -34,11 +36,12 @@ export default function MyLearningPage() {
     const [searchQuery, setSearchQuery] = useState('');
     const [isBrowseMode, setIsBrowseMode] = useState(false);
 
-    const { user } = useAuth();
+    const { user, isLoading: authLoading } = useAuth();
     const [myLibraryIds, setMyLibraryIds] = useState<string[]>([]);
     const [myCourseIds, setMyCourseIds] = useState<string[]>([]);
     const [allCourses, setAllCourses] = useState<any[]>(COURSES);
     const [enrolledCourses, setEnrolledCourses] = useState<any[]>([]);
+    const [isLoading, setIsLoading] = useState(true);
 
     // Certificates State
     const [circles, setCircles] = useState<any[]>([]); // Circles? No, Certificates
@@ -46,34 +49,32 @@ export default function MyLearningPage() {
     const [isLoadingCertificates, setIsLoadingCertificates] = useState(false);
 
     useEffect(() => {
-        // Fetch real courses from API (Catalog)
-        const fetchCatalog = async () => {
+        const loadData = async () => {
+            if (!user) return;
+            setIsLoading(true);
             try {
-                const res = await fetch('/api/courses');
-                if (res.ok) {
-                    const data = await res.json();
-                    setAllCourses(data);
+                // Parallel fetch
+                const [catalogRes, enrollRes] = await Promise.all([
+                    fetch('/api/courses'),
+                    getMyCourses(user.id)
+                ]);
+
+                if (catalogRes.ok) {
+                    setAllCourses(await catalogRes.json());
+                }
+
+                if (enrollRes.success && enrollRes.data) {
+                    setEnrolledCourses(enrollRes.data);
+                    setMyCourseIds(enrollRes.data.map((c: any) => c.id));
                 }
             } catch (error) {
-                console.error("Failed to fetch catalog", error);
+                console.error("Failed to load learning data", error);
+            } finally {
+                setIsLoading(false);
             }
         };
 
-        fetchCatalog();
-    }, []);
-
-    useEffect(() => {
-        const fetchEnrollments = async () => {
-            if (user?.id) {
-                const res = await getMyCourses(user.id);
-                if (res.success && res.data) {
-                    setEnrolledCourses(res.data);
-                    setMyCourseIds(res.data.map((c: any) => c.id));
-                }
-            }
-        };
-        fetchEnrollments();
-        fetchEnrollments();
+        if (user) loadData();
     }, [user]);
 
     // Fetch Certificates
@@ -291,6 +292,8 @@ export default function MyLearningPage() {
         }
     };
 
+    if (authLoading || isLoading) return <PageLoader message="Loading your learning center..." />;
+
     return (
         <div className="min-h-screen bg-slate-50 pb-20">
             {/* Navigation */}
@@ -484,10 +487,17 @@ export default function MyLearningPage() {
                                 filteredContent.map((item: any) => (
                                     <div key={item.id} className="bg-white rounded-2xl border border-slate-200 p-6 shadow-sm hover:shadow-md transition-shadow flex flex-col md:flex-row gap-6">
                                         <div className="w-full md:w-40 h-28 rounded-xl bg-slate-200 overflow-hidden shrink-0 relative group">
-                                            <img src={item.thumbnail || item.cover} alt={item.title} className="w-full h-full object-cover" />
+                                            <img src={item.thumbnail || item.cover} alt={item.title} className={cn("w-full h-full object-cover", item.status === 'BLOCKED' && "grayscale opacity-75")} />
                                             {(activeTab === 'courses' || activeTab === 'completed') && (
                                                 <div className="absolute inset-0 bg-black/20 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity">
                                                     <PlayCircle className="h-10 w-10 text-white drop-shadow-lg" />
+                                                </div>
+                                            )}
+                                            {item.status === 'BLOCKED' && (
+                                                <div className="absolute inset-0 bg-black/40 flex items-center justify-center backdrop-blur-[1px]">
+                                                    <span className="bg-red-500 text-white px-2 py-0.5 rounded-full text-[10px] font-bold flex items-center gap-1 uppercase tracking-wide">
+                                                        <Lock className="h-3 w-3" /> Blocked
+                                                    </span>
                                                 </div>
                                             )}
                                         </div>
@@ -558,7 +568,11 @@ export default function MyLearningPage() {
 
                                         <div className="flex items-end">
                                             {activeTab === 'courses' ? (
-                                                (item.progress === 100 || item.completedAt) ? (
+                                                item.status === 'BLOCKED' ? (
+                                                    <button disabled className="w-full md:w-auto px-5 py-2.5 bg-slate-200 text-slate-500 text-sm rounded-xl font-bold cursor-not-allowed text-center flex items-center justify-center gap-2">
+                                                        <Lock className="h-4 w-4" /> Locked
+                                                    </button>
+                                                ) : (item.progress === 100 || item.completedAt) ? (
                                                     <Link
                                                         href={`/learn/${item.id}?preview=true`}
                                                         className="w-full md:w-auto px-5 py-2.5 bg-emerald-600 text-white text-sm rounded-xl font-bold hover:bg-emerald-700 transition-colors text-center flex items-center justify-center gap-2"

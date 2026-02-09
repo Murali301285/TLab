@@ -54,6 +54,8 @@ model Course {
   isActive    Boolean  @default(true)
   isCompliance Boolean @default(false)
   documentNumber String?
+  quizQuestionCount Int @default(5)
+  quizMinScore      Int @default(80)
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
 }
@@ -141,6 +143,9 @@ model Enrollment {
   
   courseId       String
   course         Course    @relation(fields: [courseId], references: [id], onDelete: Cascade)
+  
+  status         String    @default("ACTIVE") // "ACTIVE", "BLOCKED"
+
   
   assignedAt     DateTime  @default(now())
   completedAt    DateTime?

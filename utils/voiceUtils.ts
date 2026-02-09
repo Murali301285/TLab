@@ -116,26 +116,22 @@ export const detectBestVoice = (prefs: VoicePreferences, textLanguage?: string):
 // Helper to clean text for speech
 const cleanTextForSpeech = (text: string): string => {
     return text
-        // Remove Markdown bold/italic markers (*, _)
         .replace(/[*_~`]/g, '')
-        // Remove headers signs (#)
         .replace(/#/g, '')
-        // Remove arrows like -> or =>
         .replace(/[-=]>/g, '')
-        // Remove standard dashes that might be read as "dash" or "minus" depending on context,
-        // but often we want a pause. Replacing with comma or space is safer.
-        // Actually, let's just keep single dashes but remove long ones or specific symbols.
-        //.replace(/-/g, ' ') 
-        // Remove brackets [] () if they contain non-speakable ref? No, usually content inside is good.
-        // Remove strictly non-alphanumeric symbols that aren't punctuation
-        // Keep: letters, numbers, spaces, ., ,, ?, !, ', ", -, :, ;
-        // We can just strip the specific markdown chars requested.
-        .replace(/\*\*/g, '') // double stars
-        .replace(/__/g, '')   // double underscores
+        .replace(/\*\*/g, '')
+        .replace(/__/g, '')
         .trim();
 };
 
-export const speakText = (text: string, prefs: VoicePreferences, onStart?: () => void, onEnd?: () => void, textLanguage?: string) => {
+export const speakText = (
+    text: string,
+    prefs: VoicePreferences,
+    onStart?: () => void,
+    onEnd?: () => void,
+    textLanguage?: string,
+    rate: number = 1.0
+) => {
     if (typeof window === 'undefined' || !window.speechSynthesis) return;
 
     window.speechSynthesis.cancel();
@@ -147,11 +143,10 @@ export const speakText = (text: string, prefs: VoicePreferences, onStart?: () =>
     const voice = detectBestVoice(prefs, textLanguage);
     if (voice) {
         utterance.voice = voice;
-        // console.log("Speaking with voice:", voice.name, "Lang:", voice.lang); // Debug
     }
 
-    // Adjust rate for Indian accent sometimes needs to be slower/faster? Default is 1.
-    utterance.rate = 1.0;
+    // Adjust rate 
+    utterance.rate = rate; // Use provided rate
     utterance.pitch = 1.0;
 
     if (onStart) utterance.onstart = onStart;

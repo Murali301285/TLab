@@ -22,17 +22,17 @@ export default function ConfigurationPage() {
     ];
 
     return (
-        <div className="min-h-screen bg-slate-50 flex">
+        <div className="h-screen bg-slate-50 flex overflow-hidden">
             {/* Sidebar */}
-            <aside className="w-64 bg-white border-r border-slate-200 fixed inset-y-0 left-0 z-10 flex flex-col pt-16 lg:pt-0">
-                <div className="p-6 border-b border-slate-100 mb-4 hidden lg:block">
+            <aside className="w-64 bg-white border-r border-slate-200 fixed inset-y-0 left-0 z-10 flex flex-col pt-16 lg:pt-0 hidden lg:flex">
+                <div className="p-6 border-b border-slate-100 mb-4">
                     <h1 className="text-xl font-bold text-slate-900 flex items-center gap-2">
                         <Settings className="h-6 w-6 text-cyan-600" />
                         Configuration
                     </h1>
                 </div>
 
-                <nav className="flex-1 px-4 space-y-1 mt-4 lg:mt-0">
+                <nav className="flex-1 px-4 space-y-1">
                     {menuItems.map((item) => (
                         <button
                             key={item.id}
@@ -53,7 +53,7 @@ export default function ConfigurationPage() {
                     ))}
                 </nav>
 
-                <div className="p-4 border-t border-slate-100 mb-20 lg:mb-0">
+                <div className="p-4 border-t border-slate-100">
                     <Link href="/dashboard" className="flex items-center gap-2 text-sm text-slate-500 hover:text-cyan-600 px-4 py-2 rounded-lg hover:bg-slate-50 transition-colors">
                         <LayoutDashboard className="h-4 w-4" />
                         Back to Dashboard
@@ -61,21 +61,25 @@ export default function ConfigurationPage() {
                 </div>
             </aside>
 
-            {/* Main Content */}
-            <main className="flex-1 ml-0 lg:ml-64 p-4 lg:p-8 pt-20 lg:pt-8">
-                <div className="max-w-5xl mx-auto h-[calc(100vh-6rem)] lg:h-[calc(100vh-4rem)] flex flex-col">
-                    <div className="mb-6">
-                        <h2 className="text-2xl font-bold text-slate-900">
-                            {menuItems.find(i => i.id === activeTab)?.label}
-                        </h2>
-                        <p className="text-slate-500">Manage your system configurations.</p>
-                    </div>
+            {/* Mobile Header (Simplified for now, assuming standard mobile nav handled elsewhere or hidden sidebar implies desktop focus for this task, but keeping basic structure) */}
 
-                    <div className="flex-1 relative">
-                        {activeTab === 'department' && <DepartmentMaster />}
-                        {activeTab === 'category' && <CategoryMaster />}
-                        {activeTab === 'subcategory' && <SubCategoryMaster />}
-                        {activeTab === 'certificate' && <CertificateMaster />}
+            {/* Main Content */}
+            <main className="flex-1 ml-0 lg:ml-64 flex flex-col h-full overflow-hidden">
+                <div className="flex-1 p-4 lg:p-8 pt-20 lg:pt-8 flex flex-col min-h-0 overflow-hidden">
+                    <div className="max-w-5xl mx-auto w-full flex flex-col h-full">
+                        <div className="mb-6 shrink-0">
+                            <h2 className="text-2xl font-bold text-slate-900">
+                                {menuItems.find(i => i.id === activeTab)?.label}
+                            </h2>
+                            <p className="text-slate-500">Manage your system configurations.</p>
+                        </div>
+
+                        <div className="flex-1 min-h-0 relative">
+                            {activeTab === 'department' && <DepartmentMaster />}
+                            {activeTab === 'category' && <CategoryMaster />}
+                            {activeTab === 'subcategory' && <SubCategoryMaster />}
+                            {activeTab === 'certificate' && <CertificateMaster />}
+                        </div>
                     </div>
                 </div>
             </main>

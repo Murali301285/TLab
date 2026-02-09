@@ -1,0 +1,50 @@
+{
+  "node": {
+    "403c1efd9244058dc663f99f8ab33f53c68743316e": {
+      "workers": {
+        "app/compliance/[courseId]/page": {
+          "moduleId": 599703,
+          "async": false,
+          "exportedName": "getComplianceCourses",
+          "filename": "app/actions/courses.ts"
+        }
+      },
+      "layer": {
+        "app/compliance/[courseId]/page": "action-browser"
+      },
+      "exportedName": "getComplianceCourses",
+      "filename": "app/actions/courses.ts"
+    },
+    "6018fa6ffb67a193a8d2db6115c21858ca0b1ab3b7": {
+      "workers": {
+        "app/compliance/[courseId]/page": {
+          "moduleId": 599703,
+          "async": false,
+          "exportedName": "signCourse",
+          "filename": "app/actions/courses.ts"
+        }
+      },
+      "layer": {
+        "app/compliance/[courseId]/page": "action-browser"
+      },
+      "exportedName": "signCourse",
+      "filename": "app/actions/courses.ts"
+    },
+    "70e629916ecf58cb4b3901ac97bb9bdc730922e49a": {
+      "workers": {
+        "app/compliance/[courseId]/page": {
+          "moduleId": 599703,
+          "async": false,
+          "exportedName": "saveQuizAttempt",
+          "filename": "app/actions/courses.ts"
+        }
+      },
+      "layer": {
+        "app/compliance/[courseId]/page": "action-browser"
+      },
+      "exportedName": "saveQuizAttempt",
+      "filename": "app/actions/courses.ts"
+    }
+  },
+  "edge": {}
+}

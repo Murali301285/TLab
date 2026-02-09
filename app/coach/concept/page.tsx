@@ -7,6 +7,7 @@ import { ChevronLeft, Search, Loader2, Info, ArrowRight, Table, MessageSquare, S
 // @ts-ignore
 import MindMap from '@/components/MindMap';
 import { useVoiceInput } from '@/hooks/useVoiceInput';
+import SpeechSpeedControl from '@/components/SpeechSpeedControl';
 import { speakText, VoicePreferences } from '@/utils/voiceUtils';
 
 
@@ -29,11 +30,23 @@ export default function ConceptPage() {
     // New Functionality State
     const [sessionId, setSessionId] = useState<string | null>(null);
     const [currentUserId, setCurrentUserId] = useState<string>('');
-    const [playbackSpeed, setPlaybackSpeed] = useState(1);
+    const [playbackSpeed, setPlaybackSpeed] = useState(1.0);
     const [speakingLineIdx, setSpeakingLineIdx] = useState<number | null>(null);
     const [micTarget, setMicTarget] = useState<'search' | 'chat'>('chat');
     const voicePrefs: VoicePreferences = { gender: 'female', accent: 'IN' };
     const lastInputSource = useRef<'text' | 'voice'>('text');
+
+    // Load Speed Preference
+    useEffect(() => {
+        const savedSpeed = localStorage.getItem('tlab_voice_speed');
+        if (savedSpeed) setPlaybackSpeed(parseFloat(savedSpeed));
+    }, []);
+
+    const handleSpeedChange = (speed: number) => {
+        setPlaybackSpeed(speed);
+        localStorage.setItem('tlab_voice_speed', speed.toString());
+        // If speaking, restart? No, just save for next utterance is standard.
+    };
 
     // Handle Speech Result based on target
     const handleSpeechEnd = (text: string) => {
@@ -41,17 +54,6 @@ export default function ConceptPage() {
 
         if (micTarget === 'search') {
             setTopic(text);
-            // We can't directly call handleSearch as it depends on state that might not be updated yet if we just set it
-            // Actually, we can just call the API logic or triggers.
-            // For safety, let's just set topic and let user click? 
-            // User requested "auto send". 
-            // But handleSearch reads 'topic' state.
-            // Solution: passing text directly to handleSearch would be better, but handleSearch reads state.
-            // I will modify handleSearch to accept optional override.
-
-            // TRIGGERING SEARCH MANUALLY AFTER STATE UPDATE IS TRICKY IN REACT BATCHING
-            // I will use a ref or just call the logic. 
-            // Let's modify handleSearch to take an arg.
             handleSearch(undefined, text);
         } else {
             // Chat
@@ -64,6 +66,11 @@ export default function ConceptPage() {
         onSpeechEnd: handleSpeechEnd,
         silenceTimeout: 2000
     });
+
+    // Helper to speak
+    const speakResponse = (text: string) => {
+        speakText(text, voicePrefs, undefined, undefined, 'en-US', playbackSpeed);
+    };
 
     const chatEndRef = useRef<HTMLDivElement>(null);
 
@@ -254,17 +261,25 @@ export default function ConceptPage() {
 
                 {(sessionId || speakingLineIdx !== null) && (
                     <div className="flex items-center gap-2">
-                        {(speakingLineIdx !== null) && (
+                        <div className="flex items-center gap-2">
+                            <SpeechSpeedControl
+                                speed={playbackSpeed}
+                                onChange={handleSpeedChange}
+                                className="mr-2"
+                                compact
+                            />
                             <button
                                 onClick={() => {
                                     window.speechSynthesis.cancel();
+                                    // Reset speaking state if any
                                     setSpeakingLineIdx(null);
                                 }}
-                                className="flex items-center gap-2 text-rose-300 hover:text-rose-100 transition-colors text-sm font-bold bg-white/10 px-3 py-1 rounded-full mr-2"
+                                className="p-2 text-red-500 hover:bg-red-50 rounded-full transition-colors"
+                                title="Stop Audio"
                             >
-                                <Pause className="h-4 w-4" /> Stop Audio
+                                <LogOut className="h-5 w-5" />
                             </button>
-                        )}
+                        </div>
                         {sessionId && (
                             <button onClick={handleReset} className="flex items-center gap-2 text-indigo-300 hover:text-white transition-colors text-sm font-bold mr-4">
                                 <RotateCcw className="h-4 w-4" /> New Topic

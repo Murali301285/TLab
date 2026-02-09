@@ -7,6 +7,7 @@ import { Search, FileText, CheckCircle, Clock, ChevronLeft, ShieldCheck, PenTool
 import { useAuth } from '@/components/AuthProvider';
 import { getComplianceCourses } from '@/app/actions/courses';
 import { cn } from '@/lib/utils';
+import PageLoader from '@/components/PageLoader';
 
 const CourseImage = ({ src, alt, className }: { src: string, alt: string, className?: string }) => {
     const [imgSrc, setImgSrc] = useState(src);
@@ -59,7 +60,7 @@ export default function ComplianceDashboard() {
         return matchesSearch && matchesTab;
     });
 
-    if (authLoading) return null;
+    if (authLoading || loading) return <PageLoader message="Loading Policy Center..." />;
 
     return (
         <div className="min-h-screen bg-slate-50 pb-20">
@@ -138,12 +139,7 @@ export default function ComplianceDashboard() {
                 </div>
 
                 {/* Grid */}
-                {loading ? (
-                    <div className="py-20 text-center">
-                        <div className="animate-spin rounded-full h-10 w-10 border-b-2 border-indigo-600 mx-auto mb-4"></div>
-                        <p className="text-slate-500">Loading documents...</p>
-                    </div>
-                ) : filteredDocs.length > 0 ? (
+                {filteredDocs.length > 0 ? (
                     <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
                         {filteredDocs.map((doc) => (
                             <Link href={`/compliance/${doc.id}`} key={doc.id} className="group">

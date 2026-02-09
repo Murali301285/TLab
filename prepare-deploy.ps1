@@ -31,5 +31,14 @@ if (Test-Path $static) {
     Copy-Item -Path $static -Destination $destStatic -Recurse -Force
 }
 
+# 3. Copy .env files if they exist
+$envFiles = @(".env", ".env.local", ".env.production")
+foreach ($file in $envFiles) {
+    if (Test-Path "$root\$file") {
+        Write-Host "Copying $file..."
+        Copy-Item -Path "$root\$file" -Destination "$standalone\$file" -Force
+    }
+}
+
 Write-Host "Success! The '$standalone' folder is ready for deployment." -ForegroundColor Green
 Write-Host "Action: Zip or Copy '$standalone' to your server."

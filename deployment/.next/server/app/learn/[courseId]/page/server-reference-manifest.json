@@ -1,0 +1,35 @@
+{
+  "node": {
+    "78b2733bc31f8a2c9e690ae70700382ed8b757db0d": {
+      "workers": {
+        "app/learn/[courseId]/page": {
+          "moduleId": 83602,
+          "async": false,
+          "exportedName": "updateTopicProgress",
+          "filename": "app/actions/progress.ts"
+        }
+      },
+      "layer": {
+        "app/learn/[courseId]/page": "action-browser"
+      },
+      "exportedName": "updateTopicProgress",
+      "filename": "app/actions/progress.ts"
+    },
+    "60e57c68b12269ea43bea72f14bdd1bfb9b66fd8f7": {
+      "workers": {
+        "app/learn/[courseId]/page": {
+          "moduleId": 83602,
+          "async": false,
+          "exportedName": "completeCourse",
+          "filename": "app/actions/progress.ts"
+        }
+      },
+      "layer": {
+        "app/learn/[courseId]/page": "action-browser"
+      },
+      "exportedName": "completeCourse",
+      "filename": "app/actions/progress.ts"
+    }
+  },
+  "edge": {}
+}

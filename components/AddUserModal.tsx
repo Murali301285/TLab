@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { X, Check, Search, UserPlus, ChevronRight, ChevronLeft, Eye, EyeOff } from 'lucide-react';
 import { USERS, ROLES, Role } from '@/data/mockData';
 import { cn } from '@/lib/utils';
@@ -16,6 +16,21 @@ interface AddUserModalProps {
 export default function AddUserModal({ isOpen, onClose, onAdd, availableUsers }: AddUserModalProps) {
     const { user: currentUser } = useAuth();
     const [step, setStep] = useState(1);
+    const [departments, setDepartments] = useState<any[]>([]);
+
+    useEffect(() => {
+        if (isOpen) {
+            fetch('/api/masters/departments')
+                .then(res => res.json())
+                .then(data => {
+                    // Filter for active departments only
+                    const activeDepts = data.filter((d: any) => d.isActive);
+                    setDepartments(activeDepts);
+                })
+                .catch(err => console.error("Failed to load departments", err));
+        }
+    }, [isOpen]);
+
     const [formData, setFormData] = useState({
         name: '',
         email: '',
@@ -151,10 +166,9 @@ export default function AddUserModal({ isOpen, onClose, onAdd, availableUsers }:
                                         className="w-full px-4 py-2 border border-slate-200 rounded-lg focus:ring-2 focus:ring-cyan-500 outline-none"
                                     >
                                         <option value="">Select Dept</option>
-                                        <option value="Sales">Sales</option>
-                                        <option value="Engineering">Engineering</option>
-                                        <option value="HR">HR</option>
-                                        <option value="Operations">Operations</option>
+                                        {departments.map((dept) => (
+                                            <option key={dept.id} value={dept.name}>{dept.name}</option>
+                                        ))}
                                     </select>
                                 </div>
                                 <div>

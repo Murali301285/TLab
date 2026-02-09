@@ -44,10 +44,10 @@ export const ProcessFlow = ({ data }: { data: any }) => {
                 <DynamicIcon name="network" className="w-5 h-5 text-indigo-600" />
                 {data.title}
             </h3>
-            <div className="flex flex-col md:flex-row gap-4 relative">
+            <div className="flex flex-wrap gap-4 relative">
                 {data.steps.map((step: any, idx: number) => (
-                    <div key={idx} className="flex-1 relative group">
-                        {/* Connecting Line (Desktop) */}
+                    <div key={idx} className="flex-1 min-w-[200px] relative group">
+                        {/* Connecting Line (Horizontal for wide items) */}
                         {idx < data.steps.length - 1 && (
                             <div className="hidden md:block absolute top-6 left-1/2 w-full h-1 bg-slate-100 z-0 group-hover:bg-indigo-50 transition-colors"></div>
                         )}
@@ -74,9 +74,9 @@ export const ComparisonGrid = ({ data }: { data: any }) => {
     return (
         <div className="bg-slate-50 p-6 rounded-2xl border border-slate-200">
             <h3 className="text-lg font-bold text-slate-800 mb-6 text-center">{data.title}</h3>
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+            <div className="flex flex-wrap gap-6 justify-center">
                 {data.items.map((item: any, idx: number) => (
-                    <div key={idx} className="bg-white p-5 rounded-xl shadow-sm border-t-4 border-indigo-500 hover:shadow-md transition-shadow">
+                    <div key={idx} className="flex-1 min-w-[240px] bg-white p-5 rounded-xl shadow-sm border-t-4 border-indigo-500 hover:shadow-md transition-shadow">
                         <div className="flex items-center gap-3 mb-4 border-b border-slate-100 pb-3">
                             <div className="p-2 bg-indigo-50 rounded-lg text-indigo-600">
                                 <DynamicIcon name={item.icon} className="w-5 h-5" />
@@ -103,9 +103,9 @@ export const KeyConcepts = ({ data }: { data: any }) => {
     return (
         <div className="space-y-4">
             <h3 className="text-lg font-bold text-slate-800 px-2">{data.title}</h3>
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+            <div className="flex flex-wrap gap-4">
                 {data.concepts.map((concept: any, idx: number) => (
-                    <div key={idx} className="bg-white p-4 rounded-xl border border-slate-200 hover:border-cyan-300 hover:shadow-md transition-all group">
+                    <div key={idx} className="flex-1 min-w-[200px] bg-white p-4 rounded-xl border border-slate-200 hover:border-cyan-300 hover:shadow-md transition-all group">
                         <div className="mb-3">
                             <span className="p-2 inline-block bg-cyan-50 text-cyan-700 rounded-lg group-hover:bg-cyan-100 transition-colors">
                                 <DynamicIcon name={concept.icon} className="w-5 h-5" />
@@ -123,9 +123,9 @@ export const KeyConcepts = ({ data }: { data: any }) => {
 // --- Module 4: Statistics / Highlights ---
 export const Statistics = ({ data }: { data: any }) => {
     return (
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-4 my-6">
+        <div className="flex flex-wrap gap-4 my-6 justify-center">
             {data.stats.map((stat: any, idx: number) => (
-                <div key={idx} className="bg-slate-900 text-white p-4 rounded-xl flex flex-col items-center justify-center text-center relative overflow-hidden group">
+                <div key={idx} className="flex-1 min-w-[140px] bg-slate-900 text-white p-4 rounded-xl flex flex-col items-center justify-center text-center relative overflow-hidden group">
                     <div className="absolute inset-0 bg-gradient-to-br from-indigo-500/20 to-purple-500/20 group-hover:opacity-100 transition-opacity"></div>
                     <div className="relative z-10">
                         <DynamicIcon name={stat.icon} className="w-6 h-6 text-indigo-300 mb-2 mx-auto" />

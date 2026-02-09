@@ -7,10 +7,11 @@ import { motion } from 'framer-motion';
 
 interface QuizCardProps {
     attempt: any;
+    index?: number;
     onClick: () => void;
 }
 
-export default function QuizCard({ attempt, onClick }: QuizCardProps) {
+export default function QuizCard({ attempt, index, onClick }: QuizCardProps) {
     const formatDate = (dateString: string) => {
         return new Date(dateString).toLocaleDateString('en-US', {
             month: 'short', day: 'numeric', year: 'numeric'
@@ -29,9 +30,16 @@ export default function QuizCard({ attempt, onClick }: QuizCardProps) {
     return (
         <motion.div
             whileHover={{ y: -4 }}
-            className="group bg-white rounded-xl border border-slate-200 overflow-hidden hover:shadow-lg transition-all cursor-pointer flex flex-col h-full"
+            className="group bg-white rounded-xl border border-slate-200 overflow-hidden hover:shadow-lg transition-all cursor-pointer flex flex-col h-full relative"
             onClick={onClick}
         >
+            {/* Index Badge */}
+            {index && (
+                <div className="absolute top-0 right-0 bg-slate-100 text-slate-500 text-[10px] font-bold px-2 py-0.5 rounded-bl-lg border-b border-l border-slate-200 z-10">
+                    #{index}
+                </div>
+            )}
+
             {/* Header */}
             <div className="p-4 border-b border-slate-100 flex items-start justify-between bg-slate-50/50">
                 <div className="flex items-center gap-2 text-xs font-semibold uppercase tracking-wider text-slate-500">

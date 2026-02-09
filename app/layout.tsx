@@ -13,8 +13,8 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "TLab",
-  description: "TLab Learning Platform",
+  title: "3Vidya Learning",
+  description: "3Vidya Learning Platform",
 };
 
 import { AuthProvider } from "@/components/AuthProvider";

@@ -1,11 +1,11 @@
 
 import { NextRequest, NextResponse } from 'next/server';
-import { PrismaClient } from '@prisma/client';
+import { prisma } from '@/lib/prisma';
 import { jwtVerify } from 'jose';
 
 const JWT_SECRET = new TextEncoder().encode(process.env.JWT_SECRET || 'default-secret-key-change-it');
 
-const prisma = new PrismaClient();
+// const prisma = new PrismaClient();
 export const dynamic = 'force-dynamic';
 
 export async function GET(req: NextRequest) {
@@ -17,21 +17,28 @@ export async function GET(req: NextRequest) {
         }
 
         const { payload } = await jwtVerify(token, JWT_SECRET);
+        console.log("Debug: /api/auth/me payload:", payload);
 
         // Fetch fresh user data from DB
+        const userId = (payload.id || payload.userId) as string;
+        console.log("Debug: /api/auth/me fetching for User ID:", userId);
+
         const user = await prisma.user.findUnique({
-            where: { id: payload.userId as string },
+            where: { id: userId },
             select: { id: true, name: true, email: true, role: true, image: true, department: true }
         });
+        console.log("Debug: /api/auth/me fetched user:", user);
 
         if (!user) {
-            return NextResponse.json({ user: null }, { status: 200 });
+            console.log("Debug: User not found in DB for ID:", payload.userId);
+            return NextResponse.json({ user: null, error: `User not found for ID: ${payload.userId}` }, { status: 200 });
         }
 
         return NextResponse.json({ user });
 
-    } catch (error) {
+    } catch (error: any) {
+        console.error("Debug: /api/auth/me error:", error);
         // Token invalid/expired
-        return NextResponse.json({ user: null }, { status: 200 });
+        return NextResponse.json({ user: null, error: `Auth Error: ${error.message}` }, { status: 200 });
     }
 }

@@ -1,0 +1,20 @@
+{
+  "node": {
+    "403c1efd9244058dc663f99f8ab33f53c68743316e": {
+      "workers": {
+        "app/compliance/page": {
+          "moduleId": 522184,
+          "async": false,
+          "exportedName": "getComplianceCourses",
+          "filename": "app/actions/courses.ts"
+        }
+      },
+      "layer": {
+        "app/compliance/page": "action-browser"
+      },
+      "exportedName": "getComplianceCourses",
+      "filename": "app/actions/courses.ts"
+    }
+  },
+  "edge": {}
+}

@@ -55,13 +55,48 @@ export async function generateCoverImageAction(data: { title: string; theme: str
     };
 }
 
+export async function generateDescriptionAction(title: string) {
+    // Simulate API delay
+    await new Promise(resolve => setTimeout(resolve, 1500));
+
+    // Simple mock logic to generate a description based on keywords in the title
+    const lowerTitle = title.toLowerCase();
+    let description = "";
+
+    if (lowerTitle.includes("sales") || lowerTitle.includes("selling")) {
+        description = "Master the art of closing deals and building lasting customer relationships with this comprehensive sales guide. Learn proven strategies to boost your performance and exceed targets.";
+    } else if (lowerTitle.includes("leadership") || lowerTitle.includes("manage")) {
+        description = "Develop essential leadership skills to inspire your team and drive organizational success. This module covers effective communication, decision-making, and conflict resolution.";
+    } else if (lowerTitle.includes("policy") || lowerTitle.includes("compliance") || lowerTitle.includes("nda")) {
+        description = "Review the official guidelines and compliance requirements to ensure adherence to company standards. This document outlines key responsibilities and legal obligations.";
+    } else if (lowerTitle.includes("security") || lowerTitle.includes("cyber")) {
+        description = "Enhance your awareness of cybersecurity best practices and threat prevention. Learn how to protect sensitive data and maintain a secure digital environment.";
+    } else if (lowerTitle.includes("onboard") || lowerTitle.includes("start")) {
+        description = "A complete onboarding guide designed to help new team members integrate smoothly. Discover our culture, tools, and processes to hit the ground running.";
+    } else if (lowerTitle.includes("product") || lowerTitle.includes("manual")) {
+        description = "Detailed documentation covering features, setup, and troubleshooting for our latest product. Maximize your efficiency with step-by-step instructions and tips.";
+    } else {
+        const variations = [
+            `An in-depth exploration of ${title}, providing key insights and practical applications. tailored to enhance professional development and operational efficiency.`,
+            `Comprehensive guide on ${title} designed to boost skills and knowledge. Includes practical examples and case studies.`,
+            `Master the fundamentals of ${title} with this targeted learning module. Perfect for both beginners and advanced practitioners.`
+        ];
+        description = variations[Math.floor(Math.random() * variations.length)];
+    }
+
+    return {
+        success: true,
+        description: description
+    };
+}
+
 export async function generateContentSummaryAction(content: any) {
     await new Promise(resolve => setTimeout(resolve, 2500));
 
     return {
         success: true,
         summary: `
-## Executive Summary 🚀
+## Executive Summary
 
 This document covers the essential aspects of **${content.title || 'the topic'}**, designed to maximize learning efficiency.
 

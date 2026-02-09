@@ -52,14 +52,20 @@ export default function AdminUserQuizHistory({ userId }: AdminUserQuizHistoryPro
                     </p>
                 </div>
             ) : (
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                    {quizzes.map((quiz) => (
-                        <QuizCard
-                            key={quiz.id}
-                            attempt={quiz}
-                            onClick={() => setSelectedQuiz(quiz)}
-                        />
-                    ))}
+                <div className="space-y-4">
+                    <div className="flex items-center justify-between">
+                        <h4 className="text-sm font-bold text-slate-700">Total Quizzes Attempted: {quizzes.length}</h4>
+                    </div>
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                        {quizzes.map((quiz, index) => (
+                            <QuizCard
+                                key={quiz.id}
+                                attempt={quiz}
+                                index={index + 1}
+                                onClick={() => setSelectedQuiz(quiz)}
+                            />
+                        ))}
+                    </div>
                 </div>
             )}
 

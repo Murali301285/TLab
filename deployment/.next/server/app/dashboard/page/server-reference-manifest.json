@@ -1,0 +1,50 @@
+{
+  "node": {
+    "4066f5c4e4985a6e0687cdb9230aa142d89c660e3b": {
+      "workers": {
+        "app/dashboard/page": {
+          "moduleId": 795689,
+          "async": false,
+          "exportedName": "getMyCourses",
+          "filename": "app/actions/courses.ts"
+        }
+      },
+      "layer": {
+        "app/dashboard/page": "action-browser"
+      },
+      "exportedName": "getMyCourses",
+      "filename": "app/actions/courses.ts"
+    },
+    "405d1a949b454afaa9fe993c55a268432916f05185": {
+      "workers": {
+        "app/dashboard/page": {
+          "moduleId": 795689,
+          "async": false,
+          "exportedName": "getRecentLearning",
+          "filename": "app/actions/courses.ts"
+        }
+      },
+      "layer": {
+        "app/dashboard/page": "action-browser"
+      },
+      "exportedName": "getRecentLearning",
+      "filename": "app/actions/courses.ts"
+    },
+    "403c1efd9244058dc663f99f8ab33f53c68743316e": {
+      "workers": {
+        "app/dashboard/page": {
+          "moduleId": 795689,
+          "async": false,
+          "exportedName": "getComplianceCourses",
+          "filename": "app/actions/courses.ts"
+        }
+      },
+      "layer": {
+        "app/dashboard/page": "action-browser"
+      },
+      "exportedName": "getComplianceCourses",
+      "filename": "app/actions/courses.ts"
+    }
+  },
+  "edge": {}
+}

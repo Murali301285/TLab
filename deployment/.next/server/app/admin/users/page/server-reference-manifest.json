@@ -1,0 +1,35 @@
+{
+  "node": {
+    "6011c7134284ce9daf2b60c22b4fbd02263eaa38e7": {
+      "workers": {
+        "app/admin/users/page": {
+          "moduleId": 37805,
+          "async": false,
+          "exportedName": "removeCourseAllocation",
+          "filename": "app/actions/enrollments.ts"
+        }
+      },
+      "layer": {
+        "app/admin/users/page": "action-browser"
+      },
+      "exportedName": "removeCourseAllocation",
+      "filename": "app/actions/enrollments.ts"
+    },
+    "7084ac0784d7e64c841a06ffbd7904cddf1d74bdfd": {
+      "workers": {
+        "app/admin/users/page": {
+          "moduleId": 37805,
+          "async": false,
+          "exportedName": "toggleCourseBlock",
+          "filename": "app/actions/enrollments.ts"
+        }
+      },
+      "layer": {
+        "app/admin/users/page": "action-browser"
+      },
+      "exportedName": "toggleCourseBlock",
+      "filename": "app/actions/enrollments.ts"
+    }
+  },
+  "edge": {}
+}

@@ -1,0 +1,16 @@
+{
+  "headers": {
+    "x-nextjs-stale-time": "300",
+    "x-nextjs-prerender": "1",
+    "x-next-cache-tags": "_N_T_/layout,_N_T_/coach/layout,_N_T_/coach/concept/layout,_N_T_/coach/concept/page,_N_T_/coach/concept"
+  },
+  "segmentPaths": [
+    "/_tree",
+    "/_full",
+    "/coach/concept/__PAGE__",
+    "/coach/concept",
+    "/coach",
+    "/_index",
+    "/_head"
+  ]
+}

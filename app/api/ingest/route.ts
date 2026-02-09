@@ -104,7 +104,7 @@ export async function POST(req: NextRequest) {
 
         if (file.type === 'application/pdf' || file.name.endsWith('.pdf')) {
             const data = await pdf(buffer);
-            text = data.text;
+            text = data.text.replace(/\x00/g, '');
         } else if (file.type === 'application/vnd.openxmlformats-officedocument.wordprocessingml.document' || file.name.endsWith('.docx')) {
             const result = await mammoth.extractRawText({ buffer });
             text = result.value;
@@ -135,7 +135,7 @@ export async function POST(req: NextRequest) {
                     }
                     lastY = item.transform[5];
                 }
-                const cleanText = text.replace(/\s+/g, ' ').trim();
+                const cleanText = text.replace(/\x00/g, '').replace(/\s+/g, ' ').trim();
                 // Store page text at correct index (1-based usually in UI, but 0-based array)
                 pages[pageData.pageIndex] = cleanText;
                 return cleanText;

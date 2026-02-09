@@ -1,0 +1,20 @@
+{
+  "node": {
+    "4066f5c4e4985a6e0687cdb9230aa142d89c660e3b": {
+      "workers": {
+        "app/learning/page": {
+          "moduleId": 201759,
+          "async": false,
+          "exportedName": "getMyCourses",
+          "filename": "app/actions/courses.ts"
+        }
+      },
+      "layer": {
+        "app/learning/page": "action-browser"
+      },
+      "exportedName": "getMyCourses",
+      "filename": "app/actions/courses.ts"
+    }
+  },
+  "edge": {}
+}

@@ -71,16 +71,16 @@ export default function LoginPage() {
         <div className="bg-white rounded-2xl shadow-xl overflow-hidden border border-slate-100">
           {/* Header */}
           <div className="bg-slate-900 p-8 flex flex-col items-center">
-            <div className="w-20 h-20 relative mb-4 p-2 bg-white/5 rounded-full backdrop-blur-sm">
-              <Image src="/assets/logo.png" alt="T-Lab" fill className="object-contain" />
+            <div className="w-64 h-24 relative mb-6 p-2 bg-white/5 rounded-xl backdrop-blur-sm">
+              <Image src="/assets/logo.png" alt="3Vidya" fill className="object-contain" />
             </div>
             <h1 className="text-2xl font-bold text-white tracking-tight">
-              {isForgotPassword ? 'Reset Password' : 'Welcome Back'}
+              {isForgotPassword ? 'Reset Password' : 'Welcome to 3Vidya'}
             </h1>
             <p className="text-slate-400 text-sm mt-2 text-center">
               {isForgotPassword
                 ? 'Enter your email to receive a reset link'
-                : 'Enter your credentials to access T-Lab'}
+                : 'Enter your credentials to access the platform'}
             </p>
           </div>
 

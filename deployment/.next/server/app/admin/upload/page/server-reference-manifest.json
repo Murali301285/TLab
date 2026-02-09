@@ -1,0 +1,170 @@
+{
+  "node": {
+    "4095f76e2c494b716f8aaf8b797ea6941062b1ee1c": {
+      "workers": {
+        "app/admin/upload/page": {
+          "moduleId": 35772,
+          "async": false,
+          "exportedName": "uploadChunk",
+          "filename": "app/actions/ingest.ts"
+        }
+      },
+      "layer": {
+        "app/admin/upload/page": "action-browser"
+      },
+      "exportedName": "uploadChunk",
+      "filename": "app/actions/ingest.ts"
+    },
+    "403836938969377253fc4d6e102255138544f6d1f3": {
+      "workers": {
+        "app/admin/upload/page": {
+          "moduleId": 35772,
+          "async": false,
+          "exportedName": "finalizeUpload",
+          "filename": "app/actions/ingest.ts"
+        }
+      },
+      "layer": {
+        "app/admin/upload/page": "action-browser"
+      },
+      "exportedName": "finalizeUpload",
+      "filename": "app/actions/ingest.ts"
+    },
+    "003b560e6a28d492940f3fe2607a951ad8d0bfbf6a": {
+      "workers": {
+        "app/admin/upload/page": {
+          "moduleId": 35772,
+          "async": false,
+          "exportedName": "getAdminCourses",
+          "filename": "app/actions/courses.ts"
+        }
+      },
+      "layer": {
+        "app/admin/upload/page": "action-browser"
+      },
+      "exportedName": "getAdminCourses",
+      "filename": "app/actions/courses.ts"
+    },
+    "60780a8a984dd522f452dc89dddb6855b34996693f": {
+      "workers": {
+        "app/admin/upload/page": {
+          "moduleId": 35772,
+          "async": false,
+          "exportedName": "toggleCourseStatus",
+          "filename": "app/actions/courses.ts"
+        }
+      },
+      "layer": {
+        "app/admin/upload/page": "action-browser"
+      },
+      "exportedName": "toggleCourseStatus",
+      "filename": "app/actions/courses.ts"
+    },
+    "402899d31c86bc8391f4329be6b73d155fb7a096a5": {
+      "workers": {
+        "app/admin/upload/page": {
+          "moduleId": 35772,
+          "async": false,
+          "exportedName": "deleteCourse",
+          "filename": "app/actions/courses.ts"
+        }
+      },
+      "layer": {
+        "app/admin/upload/page": "action-browser"
+      },
+      "exportedName": "deleteCourse",
+      "filename": "app/actions/courses.ts"
+    },
+    "60a754828f966caf016fae46caa080db279a84659d": {
+      "workers": {
+        "app/admin/upload/page": {
+          "moduleId": 35772,
+          "async": false,
+          "exportedName": "updateCourse",
+          "filename": "app/actions/courses.ts"
+        }
+      },
+      "layer": {
+        "app/admin/upload/page": "action-browser"
+      },
+      "exportedName": "updateCourse",
+      "filename": "app/actions/courses.ts"
+    },
+    "0079fc21519f61acd457850c727ad0651263982645": {
+      "workers": {
+        "app/admin/upload/page": {
+          "moduleId": 35772,
+          "async": false,
+          "exportedName": "getCategories",
+          "filename": "app/actions/courses.ts"
+        }
+      },
+      "layer": {
+        "app/admin/upload/page": "action-browser"
+      },
+      "exportedName": "getCategories",
+      "filename": "app/actions/courses.ts"
+    },
+    "40354e43babc0943c0545ec1d5c34359794f0eea9f": {
+      "workers": {
+        "app/admin/upload/page": {
+          "moduleId": 35772,
+          "async": false,
+          "exportedName": "generateContentSummaryAction",
+          "filename": "app/actions/aiMock.ts"
+        }
+      },
+      "layer": {
+        "app/admin/upload/page": "action-browser"
+      },
+      "exportedName": "generateContentSummaryAction",
+      "filename": "app/actions/aiMock.ts"
+    },
+    "604f2d8864a149c7a11a6c9ecd98c4d2c4a5da1fe6": {
+      "workers": {
+        "app/admin/upload/page": {
+          "moduleId": 35772,
+          "async": false,
+          "exportedName": "aiAssistantChatAction",
+          "filename": "app/actions/aiMock.ts"
+        }
+      },
+      "layer": {
+        "app/admin/upload/page": "action-browser"
+      },
+      "exportedName": "aiAssistantChatAction",
+      "filename": "app/actions/aiMock.ts"
+    },
+    "40eeaf26cf5cee60e6970f227ccaffb775f9ada8e8": {
+      "workers": {
+        "app/admin/upload/page": {
+          "moduleId": 35772,
+          "async": false,
+          "exportedName": "generateDescriptionAction",
+          "filename": "app/actions/aiMock.ts"
+        }
+      },
+      "layer": {
+        "app/admin/upload/page": "action-browser"
+      },
+      "exportedName": "generateDescriptionAction",
+      "filename": "app/actions/aiMock.ts"
+    },
+    "404eb48586c9a323f7783a37afab727cd3d205b78f": {
+      "workers": {
+        "app/admin/upload/page": {
+          "moduleId": 35772,
+          "async": false,
+          "exportedName": "generateDesignCoverAction",
+          "filename": "app/actions/aiCover.ts"
+        }
+      },
+      "layer": {
+        "app/admin/upload/page": "action-browser"
+      },
+      "exportedName": "generateDesignCoverAction",
+      "filename": "app/actions/aiCover.ts"
+    }
+  },
+  "edge": {}
+}

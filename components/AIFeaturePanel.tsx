@@ -18,6 +18,7 @@ import BentoRenderer from './BentoRenderer';
 import MindMapRenderer from './MindMapRenderer';
 import MermaidDiagram from './MermaidDiagram';
 import ScrollyTelling from './ScrollyTelling';
+import SpeechSpeedControl from './SpeechSpeedControl';
 import { Topic } from '@/data/mockData';
 
 interface AIFeaturePanelProps {
@@ -274,6 +275,17 @@ export default function AIFeaturePanel({
         } finally {
             setIsAiLoading(false);
         }
+    };
+
+    // Load Speed Preference
+    useEffect(() => {
+        const savedSpeed = localStorage.getItem('tlab_voice_speed');
+        if (savedSpeed) setPlaybackSpeed(parseFloat(savedSpeed));
+    }, []);
+
+    const handleSpeedChange = (speed: number) => {
+        setPlaybackSpeed(speed);
+        localStorage.setItem('tlab_voice_speed', speed.toString());
     };
 
     // --- Podcast Logic ---

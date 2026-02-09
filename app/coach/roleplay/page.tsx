@@ -5,6 +5,7 @@ import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { ChevronLeft, MessageSquare, Briefcase, Zap, User, Mic2, Users, Handshake, Award, Play, Pause, Settings, Mic, Send, LogOut } from 'lucide-react';
 import CoachVoiceSettings from '@/components/CoachVoiceSettings';
+import SpeechSpeedControl from '@/components/SpeechSpeedControl';
 import { useVoiceInput } from '@/hooks/useVoiceInput';
 import { speakText, VoicePreferences } from '@/utils/voiceUtils';
 
@@ -15,22 +16,49 @@ type Message = {
 };
 
 const SCENARIOS = [
-    { id: 'perf_review', title: 'Performance Review', icon: <Award className="h-6 w-6" />, desc: 'Discuss your achievements and goals with your manager.', color: 'from-amber-400 to-orange-600' },
-    { id: 'networking', title: 'Networking', icon: <Handshake className="h-6 w-6" />, desc: 'Master small talk and introduce yourself at an event.', color: 'from-blue-400 to-cyan-600' },
-    { id: 'client_pitch', title: 'Client Pitch', icon: <BriefcaseIcon className="h-6 w-6" />, desc: 'Present a proposal to a potential client effectively.', color: 'from-emerald-400 to-green-600' },
-    { id: 'feedback', title: 'Giving Feedback', icon: <MessageSquare className="h-6 w-6" />, desc: 'Deliver constructive criticism to a peer clearly.', color: 'from-pink-400 to-rose-600' },
-    { id: 'public_speaking', title: 'Public Speaking', icon: <Mic2 className="h-6 w-6" />, desc: 'Practice your opening speech or presentation skills.', color: 'from-purple-400 to-violet-600' },
-    { id: 'conflict', title: 'Conflict Resolution', icon: <Zap className="h-6 w-6" />, desc: 'Resolve a heated dispute with a colleague professionally.', color: 'from-red-400 to-red-600' },
+    {
+        id: 'performance_review',
+        title: 'Performance Review',
+        desc: 'Discuss your achievements and goals with your manager.',
+        icon: <Award className="h-8 w-8" />,
+        color: 'from-orange-500 to-amber-400'
+    },
+    {
+        id: 'networking',
+        title: 'Networking',
+        desc: 'Master small talk and introduce yourself at an event.',
+        icon: <Handshake className="h-8 w-8" />,
+        color: 'from-blue-500 to-cyan-400'
+    },
+    {
+        id: 'client_pitch',
+        title: 'Client Pitch',
+        desc: 'Present a proposal to a potential client effectively.',
+        icon: <Briefcase className="h-8 w-8" />,
+        color: 'from-emerald-500 to-green-400'
+    },
+    {
+        id: 'giving_feedback',
+        title: 'Giving Feedback',
+        desc: 'Deliver constructive criticism to a peer clearly.',
+        icon: <MessageSquare className="h-8 w-8" />,
+        color: 'from-pink-500 to-rose-400'
+    },
+    {
+        id: 'public_speaking',
+        title: 'Public Speaking',
+        desc: 'Practice your opening speech or presentation skills.',
+        icon: <Mic2 className="h-8 w-8" />,
+        color: 'from-purple-500 to-indigo-400'
+    },
+    {
+        id: 'conflict_resolution',
+        title: 'Conflict Resolution',
+        desc: 'Resolve a heated dispute with a colleague professionally.',
+        icon: <Zap className="h-8 w-8" />,
+        color: 'from-red-500 to-orange-400'
+    }
 ];
-
-function BriefcaseIcon(props: any) {
-    return (
-        <svg {...props} xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-            <rect width="20" height="14" x="2" y="7" rx="2" ry="2" />
-            <path d="M16 21V5a2 2 0 0 0-2-2h-4a2 2 0 0 0-2 2v16" />
-        </svg>
-    )
-}
 
 export default function RoleplayPage() {
     const router = useRouter();
@@ -42,7 +70,7 @@ export default function RoleplayPage() {
     // State for Compact UI
     const [input, setInput] = useState('');
     const [sessionId, setSessionId] = useState<string | null>(null);
-    const [playbackSpeed, setPlaybackSpeed] = useState(1);
+    const [playbackSpeed, setPlaybackSpeed] = useState(1.0);
     const [speakingLineIdx, setSpeakingLineIdx] = useState<number | null>(null);
     const [currentUserId, setCurrentUserId] = useState<string>('');
     const [loading, setLoading] = useState(false);
@@ -50,6 +78,17 @@ export default function RoleplayPage() {
 
     // Voice Settings
     const [voicePrefs, setVoicePrefs] = useState<VoicePreferences>({ gender: 'female', accent: 'IN' });
+
+    // Load Speed Preference
+    useEffect(() => {
+        const savedSpeed = localStorage.getItem('tlab_voice_speed');
+        if (savedSpeed) setPlaybackSpeed(parseFloat(savedSpeed));
+    }, []);
+
+    const handleSpeedChange = (speed: number) => {
+        setPlaybackSpeed(speed);
+        localStorage.setItem('tlab_voice_speed', speed.toString());
+    };
 
     // New Smart Voice Hook
     const { isListening, startListening, stopListening, hasBrowserSupport } = useVoiceInput({
@@ -161,7 +200,9 @@ export default function RoleplayPage() {
             () => { // OnEnd
                 setIsAiSpeaking(false);
                 if (idx !== undefined) setSpeakingLineIdx(null);
-            }
+            },
+            undefined, // onBoundary
+            playbackSpeed // speed
         );
     };
 
@@ -258,82 +299,80 @@ export default function RoleplayPage() {
                     <ChevronLeft className="h-5 w-5" /> End
                 </button>
 
-                <div className="flex items-center gap-4">
-                    {/* Speed Control */}
-                    <select
-                        value={playbackSpeed}
-                        onChange={e => setPlaybackSpeed(parseFloat(e.target.value))}
-                        className="bg-slate-100 text-slate-800 border-none rounded-lg py-1 px-3 text-xs font-bold focus:ring-0 outline-none cursor-pointer"
-                    >
-                        <option value="0.75">0.75x</option>
-                        <option value="1">1.0x</option>
-                        <option value="1.25">1.25x</option>
-                    </select>
-
-                    {/* Voice Settings Removed */}
-
+                <div className="flex items-center gap-2">
+                    <SpeechSpeedControl
+                        speed={playbackSpeed}
+                        onChange={handleSpeedChange}
+                        className="mr-2"
+                        compact
+                    />
                     <div className="font-bold text-slate-900 flex items-center gap-2 text-sm">
                         <span className="h-2 w-2 rounded-full bg-cyan-500 animate-pulse"></span>
                         {SCENARIOS.find(s => s.id === scenario)?.title}
                     </div>
                 </div>
 
-                {/* Empty 3rd col to balance center */}
-                <div className="w-16"></div>
+                {/* Empty 3rd col to balance center if needed, or just justify-between handles it */}
             </header>
 
             {/* Chat Area - Matches Language Coach Styling */}
-            <div className="flex-1 overflow-y-auto p-4 space-y-6 bg-slate-50">
-                {messages.length === 0 && (
-                    <div className="text-center text-slate-400 mt-20">
-                        <MessageSquare className="h-10 w-10 mx-auto mb-4 opacity-50" />
-                        <p className="text-sm">Tap mic to start speaking.</p>
-                        <p className="text-xs mt-1">"Hello, I'd like to practice..."</p>
-                    </div>
-                )}
-
-                {messages.map((m, idx) => (
-                    <div key={idx} className={`flex items-start gap-3 ${m.role === 'user' ? 'flex-row-reverse' : ''}`}>
-                        {/* Avatar */}
-                        <div className={`w-8 h-8 rounded-full flex items-center justify-center shrink-0 ${m.role === 'user' ? 'bg-slate-200 text-slate-600' : 'bg-cyan-100 text-cyan-600'}`}>
-                            {m.role === 'user' ? <User className="h-4 w-4" /> : <Zap className="h-4 w-4" />}
+            < div className="flex-1 overflow-y-auto p-4 space-y-6 bg-slate-50" >
+                {
+                    messages.length === 0 && (
+                        <div className="text-center text-slate-400 mt-20">
+                            <MessageSquare className="h-10 w-10 mx-auto mb-4 opacity-50" />
+                            <p className="text-sm">Tap mic to start speaking.</p>
+                            <p className="text-xs mt-1">"Hello, I'd like to practice..."</p>
                         </div>
+                    )
+                }
 
-                        <div className={`max-w-[80%] space-y-1`}>
-                            <div className={`p-4 rounded-2xl text-sm leading-relaxed ${m.role === 'user'
-                                ? 'bg-slate-800 text-white rounded-tr-sm'
-                                : 'bg-white border border-slate-100 text-slate-800 rounded-tl-sm shadow-sm'}`}>
-                                {m.content}
+                {
+                    messages.map((m, idx) => (
+                        <div key={idx} className={`flex items-start gap-3 ${m.role === 'user' ? 'flex-row-reverse' : ''}`}>
+                            {/* Avatar */}
+                            <div className={`w-8 h-8 rounded-full flex items-center justify-center shrink-0 ${m.role === 'user' ? 'bg-slate-200 text-slate-600' : 'bg-cyan-100 text-cyan-600'}`}>
+                                {m.role === 'user' ? <User className="h-4 w-4" /> : <Zap className="h-4 w-4" />}
                             </div>
 
-                            {/* Play Button - Clean Integration */}
-                            <button
-                                onClick={() => handleSpeak(m.content, idx)}
-                                className={`text-xs flex items-center gap-1 hover:underline ${m.role === 'user' ? 'text-slate-400 ml-auto' : 'text-cyan-600'
-                                    }`}
-                            >
-                                {speakingLineIdx === idx ? <Pause className="h-3 w-3" /> : <Play className="h-3 w-3" />}
-                                {speakingLineIdx === idx ? 'Stop' : 'Play'}
-                            </button>
+                            <div className={`max-w-[80%] space-y-1`}>
+                                <div className={`p-4 rounded-2xl text-sm leading-relaxed ${m.role === 'user'
+                                    ? 'bg-slate-800 text-white rounded-tr-sm'
+                                    : 'bg-white border border-slate-100 text-slate-800 rounded-tl-sm shadow-sm'}`}>
+                                    {m.content}
+                                </div>
+
+                                {/* Play Button - Clean Integration */}
+                                <button
+                                    onClick={() => handleSpeak(m.content, idx)}
+                                    className={`text-xs flex items-center gap-1 hover:underline ${m.role === 'user' ? 'text-slate-400 ml-auto' : 'text-cyan-600'
+                                        }`}
+                                >
+                                    {speakingLineIdx === idx ? <Pause className="h-3 w-3" /> : <Play className="h-3 w-3" />}
+                                    {speakingLineIdx === idx ? 'Stop' : 'Play'}
+                                </button>
+                            </div>
                         </div>
-                    </div>
-                ))}
+                    ))
+                }
 
                 {error && <div className="text-center text-red-500 text-sm py-2">{error}</div>}
 
-                {loading && (
-                    <div className="flex gap-2 items-center text-slate-400 text-xs ml-12">
-                        <div className="h-2 w-2 bg-slate-300 rounded-full animate-bounce" />
-                        <div className="h-2 w-2 bg-slate-300 rounded-full animate-bounce [animation-delay:0.1s]" />
-                        <div className="h-2 w-2 bg-slate-300 rounded-full animate-bounce [animation-delay:0.2s]" />
-                    </div>
-                )}
+                {
+                    loading && (
+                        <div className="flex gap-2 items-center text-slate-400 text-xs ml-12">
+                            <div className="h-2 w-2 bg-slate-300 rounded-full animate-bounce" />
+                            <div className="h-2 w-2 bg-slate-300 rounded-full animate-bounce [animation-delay:0.1s]" />
+                            <div className="h-2 w-2 bg-slate-300 rounded-full animate-bounce [animation-delay:0.2s]" />
+                        </div>
+                    )
+                }
 
                 <div ref={messagesEndRef} />
-            </div>
+            </div >
 
             {/* Input Area - Compact Single Row */}
-            <div className="p-4 bg-white border-t border-slate-100 shrink-0">
+            < div className="p-4 bg-white border-t border-slate-100 shrink-0" >
                 <div className="relative flex items-center gap-2 max-w-4xl mx-auto">
                     {/* Mic Button */}
                     <div className="relative">
@@ -387,7 +426,7 @@ export default function RoleplayPage() {
                         <Send className="h-5 w-5" />
                     </button>
                 </div>
-            </div>
-        </div>
+            </div >
+        </div >
     );
 }

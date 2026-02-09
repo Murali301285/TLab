@@ -61,7 +61,7 @@ export default function InfoGraphicRenderer({ data }: InfoGraphicProps) {
                 </div>
             )}
 
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+            <div className="grid grid-cols-1 xl:grid-cols-2 gap-6">
                 {items.map((item: any, idx: number) => {
                     const Icon = ICONS[idx % ICONS.length];
                     const color = COLORS[idx % COLORS.length];

@@ -86,7 +86,7 @@ export async function POST(req: NextRequest) {
                 - Use lists (-) for features/steps.
 
                 Required Sections:
-                1. ## Executive Summary (TL;DR)
+                1. ## Executive Summary
                 2. ## Core Concepts
                 3. ## Detailed Analysis
                 4. ## Real-World Application
@@ -102,8 +102,14 @@ export async function POST(req: NextRequest) {
 
             case 'quiz':
                 const qCount = questionCount || 3;
+                let exclusionPrompt = "";
+                if (body.previousQuestions && Array.isArray(body.previousQuestions) && body.previousQuestions.length > 0) {
+                    exclusionPrompt = `CRITICAL: Do NONE of these questions: ${JSON.stringify(body.previousQuestions)}. Generate completely new questions.`;
+                }
+
                 systemPrompt = `Create a multiple-choice quiz (${qCount} questions).
                 Format: [{"question": "...", "options": ["..."], "correctAnswer": 0}]
+                ${exclusionPrompt}
                 ${jsonInstruction}`;
                 break;
 
@@ -246,7 +252,7 @@ export async function POST(req: NextRequest) {
         let generatedContent = completion.choices[0]?.message?.content || "";
 
         // 4. Save to DB (Persistent Caching)
-        if (topicId && type !== 'explain') { // Don't save ad-hoc explanations
+        if (topicId && type !== 'explain' && generatedContent && generatedContent.length > 20) { // Don't save ad-hoc explanations or empty/short content
             let updateData: any = {};
 
             // Clean JSON if needed

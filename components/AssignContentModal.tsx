@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { createPortal } from 'react-dom';
-import { XCircle, Clock, FileCheck, Search, Filter, BookOpen, Library, Check, ChevronDown, Award } from 'lucide-react';
+import { XCircle, Clock, FileCheck, Search, Filter, BookOpen, Library, Check, ChevronDown, Award, Eye, X } from 'lucide-react';
+import Image from 'next/image';
 import { cn } from '@/lib/utils';
 import Select from 'react-select';
 
@@ -24,6 +25,7 @@ export default function AssignContentModal({ isOpen, onClose, onAssign, user, co
 
     const [certificates, setCertificates] = useState<any[]>([]);
     const [isLoadingCertificates, setIsLoadingCertificates] = useState(false);
+    const [previewCert, setPreviewCert] = useState<any | null>(null);
 
     const [searchTerm, setSearchTerm] = useState('');
     const [activeFilter, setActiveFilter] = useState<string>('All');
@@ -313,6 +315,45 @@ export default function AssignContentModal({ isOpen, onClose, onAssign, user, co
                         </label>
                     </div>
 
+                    {/* Certificate Selection Logic - Moved Here */}
+                    {formData.hasCertificate && (
+                        <div className="pt-2 animate-in slide-in-from-top-2 duration-200">
+                            <label className="block text-sm font-medium text-slate-700 mb-2 flex items-center gap-2">
+                                <Award className="h-4 w-4 text-purple-600" /> Select Certificate Template
+                            </label>
+                            <div className="flex gap-2">
+                                <div className="flex-1">
+                                    <Select
+                                        options={certificates.map(c => ({ value: c.id, label: c.name }))}
+                                        isLoading={isLoadingCertificates}
+                                        value={certificates.find(c => c.id === formData.certificateId) ? { value: formData.certificateId, label: certificates.find(c => c.id === formData.certificateId)?.name } : null}
+                                        onChange={(val: any) => setFormData(prev => ({ ...prev, certificateId: val?.value || '' }))}
+                                        placeholder="Search & Select Certificate..."
+                                        className="text-sm"
+                                        classNames={{
+                                            control: () => "!border-slate-300 !rounded-lg hover:!border-cyan-500 !shadow-none",
+                                            option: ({ isFocused, isSelected }: { isFocused: boolean; isSelected: boolean }) => cn(
+                                                "!cursor-pointer",
+                                                isSelected ? "!bg-cyan-600" : isFocused ? "!bg-cyan-50 !text-cyan-900" : ""
+                                            )
+                                        }}
+                                    />
+                                </div>
+                                <button
+                                    onClick={() => {
+                                        const cert = certificates.find(c => c.id === formData.certificateId);
+                                        if (cert) setPreviewCert(cert);
+                                    }}
+                                    disabled={!formData.certificateId}
+                                    className="px-3 py-2 border border-slate-300 rounded-lg text-slate-600 hover:text-cyan-600 hover:border-cyan-400 hover:bg-cyan-50 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                                    title="Preview Certificate"
+                                >
+                                    <Eye className="h-5 w-5" />
+                                </button>
+                            </div>
+                        </div>
+                    )}
+
                     {/* Quiz Configuration */}
                     <div>
                         <label className="block text-sm font-medium text-slate-700 mb-2">Quiz Questions Count</label>
@@ -337,29 +378,7 @@ export default function AssignContentModal({ isOpen, onClose, onAssign, user, co
 
                     {/* Certificate Toggle */}
 
-                    {/* Certificate Selection Logic */}
-                    {formData.hasCertificate && (
-                        <div className="pt-2 animate-in slide-in-from-top-2 duration-200">
-                            <label className="block text-sm font-medium text-slate-700 mb-2 flex items-center gap-2">
-                                <Award className="h-4 w-4 text-purple-600" /> Select Certificate Template
-                            </label>
-                            <Select
-                                options={certificates.map(c => ({ value: c.id, label: c.name }))}
-                                isLoading={isLoadingCertificates}
-                                value={certificates.find(c => c.id === formData.certificateId) ? { value: formData.certificateId, label: certificates.find(c => c.id === formData.certificateId)?.name } : null}
-                                onChange={(val: any) => setFormData(prev => ({ ...prev, certificateId: val?.value || '' }))}
-                                placeholder="Search & Select Certificate..."
-                                className="text-sm"
-                                classNames={{
-                                    control: () => "!border-slate-300 !rounded-lg hover:!border-cyan-500 !shadow-none",
-                                    option: ({ isFocused, isSelected }: { isFocused: boolean; isSelected: boolean }) => cn(
-                                        "!cursor-pointer",
-                                        isSelected ? "!bg-cyan-600" : isFocused ? "!bg-cyan-50 !text-cyan-900" : ""
-                                    )
-                                }}
-                            />
-                        </div>
-                    )}
+
 
                 </div>
 
@@ -380,6 +399,34 @@ export default function AssignContentModal({ isOpen, onClose, onAssign, user, co
                     </button>
                 </div>
             </div>
+
+            {/* Preview Modal */}
+            {previewCert && (
+                <div className="fixed inset-0 z-[110] flex items-center justify-center bg-black/80 backdrop-blur-sm p-4 animate-in fade-in duration-200" onClick={() => setPreviewCert(null)}>
+                    <div className="bg-white rounded-xl shadow-2xl max-w-4xl w-full overflow-hidden relative" onClick={e => e.stopPropagation()}>
+                        <div className="p-4 border-b border-slate-100 flex justify-between items-center bg-slate-50">
+                            <h3 className="font-bold text-lg text-slate-900">{previewCert.name}</h3>
+                            <button onClick={() => setPreviewCert(null)} className="text-slate-400 hover:text-slate-600 p-1 hover:bg-slate-200 rounded-full transition-colors">
+                                <X className="h-5 w-5" />
+                            </button>
+                        </div>
+                        <div className="p-4 bg-slate-900 flex justify-center items-center min-h-[400px]">
+                            {previewCert.bannerImage ? (
+                                <div className="relative w-full aspect-[3/2] max-h-[60vh]">
+                                    <Image
+                                        src={previewCert.bannerImage}
+                                        alt={previewCert.name}
+                                        fill
+                                        className="object-contain"
+                                    />
+                                </div>
+                            ) : (
+                                <p className="text-white/50">No preview image available</p>
+                            )}
+                        </div>
+                    </div>
+                </div>
+            )}
         </div>
     );
 }

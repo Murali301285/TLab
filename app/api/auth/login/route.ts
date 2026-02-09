@@ -1,10 +1,10 @@
 
 import { NextRequest, NextResponse } from 'next/server';
-import { PrismaClient } from '@prisma/client';
+import { prisma } from '@/lib/prisma';
 import bcrypt from 'bcryptjs';
-import { SignJWT } from 'jose';
+import * as jose from 'jose';
 
-const prisma = new PrismaClient();
+// const prisma = new PrismaClient();
 const JWT_SECRET = new TextEncoder().encode(process.env.JWT_SECRET || 'default-secret-key-change-it');
 
 export async function POST(req: NextRequest) {
@@ -33,13 +33,10 @@ export async function POST(req: NextRequest) {
         }
 
         // Generate JWT
-        const token = await new SignJWT({
-            userId: user.id,
-            email: user.email,
-            role: user.role
-        })
+        const token = await new jose.SignJWT({ id: user.id, email: user.email, role: user.role })
             .setProtectedHeader({ alg: 'HS256' })
-            .setExpirationTime('24h')
+            .setIssuedAt()
+            .setExpirationTime('1d')
             .sign(JWT_SECRET);
 
         const response = NextResponse.json({ success: true, user: { id: user.id, name: user.name, email: user.email, role: user.role, image: user.image } });

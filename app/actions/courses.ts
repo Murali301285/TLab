@@ -1,9 +1,7 @@
 'use server';
 
-import { PrismaClient } from '@prisma/client';
+import { prisma } from '@/lib/prisma';
 import { revalidatePath } from 'next/cache';
-
-const prisma = new PrismaClient();
 
 export async function getAdminCourses() {
     try {
@@ -86,7 +84,8 @@ export async function getMyCourses(userId: string) {
                 expiresAt: e.expiresAt,
                 completedAt: e.completedAt,
                 totalTime: e.totalTime,
-                lastActiveAt: e.lastActiveAt
+                lastActiveAt: e.lastActiveAt,
+                status: e.status
             };
         }));
 
@@ -218,6 +217,22 @@ export async function getComplianceCourses(userId: string) {
                 select: { topicId: true }
             });
 
+            // Check if Quiz Passed
+            let quizPassed = false;
+            const courseData = e.course as any;
+            if ((courseData.quizQuestionCount || 0) > 0) {
+                const bestAttempt = await prisma.quizAttempt.findFirst({
+                    where: {
+                        userId: uid,
+                        courseId: e.course.id,
+                        score: { gte: courseData.quizMinScore || 80 }
+                    }
+                });
+                if (bestAttempt) quizPassed = true;
+            } else {
+                quizPassed = true; // No quiz needed
+            }
+
             complianceDocs.push({
                 ...e.course,
                 assignedAt: e.assignedAt,
@@ -226,6 +241,7 @@ export async function getComplianceCourses(userId: string) {
                 isSigned,
                 progress,
                 allTopicsViewed,
+                quizPassed,
                 lastActiveTopicId: lastProgress?.topicId || null,
                 expiresAt: e.expiresAt
             });
@@ -324,8 +340,11 @@ export async function updateCourse(courseId: string, data: any) {
                 subCategoryId: data.subCategoryId,
                 thumbnail: data.thumbnailUrl,
                 isActive: data.isActive,
-                isCompliance: data.isCompliance
-            }
+                isCompliance: data.isCompliance,
+                documentNumber: data.documentNumber,
+                quizQuestionCount: data.quizQuestionCount,
+                quizMinScore: data.quizMinScore
+            } as any
         });
         revalidatePath('/admin/upload');
         return { success: true };
@@ -370,6 +389,39 @@ export async function getCourseById(courseId: string) {
         if (!course) return { success: false, error: "Course not found" };
         return { success: true, data: course };
     } catch (error: any) {
+        return { success: false, error: error.message };
+    }
+}
+
+export async function saveQuizAttempt(
+    userId: string,
+    courseId: string,
+    result: { score: number, totalQuestions: number, timeTaken: number, quizData: any }
+) {
+    try {
+        const course = await prisma.course.findUnique({
+            where: { id: courseId }
+        });
+
+        if (!course) throw new Error("Course not found");
+
+        const attempt = await prisma.quizAttempt.create({
+            data: {
+                userId,
+                courseId,
+                score: result.score,
+                totalQuestions: result.totalQuestions,
+                timeTaken: result.timeTaken,
+                quizData: result.quizData,
+                topicName: "Final Compliance Assessment"
+            }
+        });
+
+        const passed = result.score >= (course.quizMinScore || 80);
+
+        return { success: true, passed, minScore: course.quizMinScore || 80, attemptId: attempt.id };
+    } catch (error: any) {
+        console.error("Save Quiz Attempt Error:", error);
         return { success: false, error: error.message };
     }
 }

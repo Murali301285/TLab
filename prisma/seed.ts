@@ -70,6 +70,37 @@ async function main() {
         console.log(`Created course: ${courseFn.title}`)
     }
 
+    // 3. Seed Departments
+    const departments = ['Sales', 'Engineering', 'HR', 'Operations'];
+    for (const deptName of departments) {
+        await prisma.department.upsert({
+            where: { name: deptName },
+            update: {},
+            create: {
+                name: deptName,
+                remarks: 'Default Department',
+                isActive: true
+            }
+        });
+        console.log(`Ensured Department: ${deptName}`);
+    }
+
+    // 4. Migrate Existing Users to link with Departments (Standardize Naming)
+    const allUsers = await prisma.user.findMany();
+    for (const user of allUsers) {
+        if (user.department) {
+            // Find a matching department case-insensitively
+            const match = departments.find(d => d.toLowerCase() === user.department?.toLowerCase());
+            if (match && match !== user.department) {
+                await prisma.user.update({
+                    where: { id: user.id },
+                    data: { department: match }
+                });
+                console.log(`Updated user ${user.email}: ${user.department} -> ${match}`);
+            }
+        }
+    }
+
     console.log('Seeding finished.')
 }
 

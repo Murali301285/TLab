@@ -291,7 +291,8 @@ export default function CoursePlayer() {
                     // REDIRECT COMPLIANCE COURSES
                     if (courseData.isCompliance) {
                         console.log("Redirecting Compliance Course to Viewer...");
-                        router.replace(`/compliance/${courseId}`);
+                        const currentParams = new URLSearchParams(searchParams.toString());
+                        router.replace(`/compliance/${courseId}?${currentParams.toString()}`);
                         return; // Stop further processing
                     }
 

@@ -6,6 +6,7 @@ import Link from 'next/link';
 import { Search, Bell, BookOpen, Clock, Award, ArrowRight, Bot, Users, FileText, Settings, UserCog, ShieldCheck } from 'lucide-react';
 import ProfileDropdown from '@/components/ProfileDropdown';
 import { useAuth } from '@/components/AuthProvider';
+import PageLoader from '@/components/PageLoader';
 import { getMyCourses, getRecentLearning, getComplianceCourses } from '@/app/actions/courses';
 
 import { motion } from 'framer-motion';
@@ -13,13 +14,25 @@ import { motion } from 'framer-motion';
 // ... (keep imports)
 
 export default function Dashboard() {
-    const { user, isLoading: authLoading } = useAuth();
+    const { user, isLoading: authLoading, logout, authError } = useAuth();
     const [courses, setCourses] = useState<any[]>([]);
     const [recentCourses, setRecentCourses] = useState<any[]>([]);
     const [complianceDocs, setComplianceDocs] = useState<any[]>([]);
-    const [dataLoading, setDataLoading] = useState(false);
+    // Default dataLoading to true to prevent flash of content before load
+    const [dataLoading, setDataLoading] = useState(true);
 
     const [sortOption, setSortOption] = useState('latest_read');
+
+    // Add PageLoader import at top (assumed or manually add)
+    // Actually, I should add import first separately, or do a multi_replace for import and component.
+    // The previous view shows imports up to line 15. The `useAuth` is at line 8.
+    // I can add import after line 8.
+
+    // Wait, replace_file_content replaces contiguous blocks.
+    // I need to add import AND use it.
+    // If I use multi_replace, I can do both.
+
+    // Let's use multi_replace.
 
     useEffect(() => {
         async function loadCourses() {
@@ -56,7 +69,15 @@ export default function Dashboard() {
         }
     }, [user]);
 
-    if (authLoading) return <div className="min-h-screen bg-slate-50 flex items-center justify-center"><div className="animate-spin rounded-full h-8 w-8 border-b-2 border-cyan-600"></div></div>;
+    useEffect(() => {
+        // Add scrollbar-hover class to html element to hide scrollbar by default
+        document.documentElement.classList.add('scrollbar-hover');
+        return () => {
+            document.documentElement.classList.remove('scrollbar-hover');
+        };
+    }, []);
+
+    if (authLoading || dataLoading) return <PageLoader message="Loading your dashboard..." />;
 
     const isAdmin = user?.role === 'admin';
 
@@ -87,7 +108,14 @@ export default function Dashboard() {
     }, 0);
 
     const lastActiveString = lastActiveDate > 0
-        ? new Date(lastActiveDate).toLocaleString('en-US', { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' })
+        ? new Date(lastActiveDate).toLocaleString('en-US', {
+            month: 'short',
+            day: 'numeric',
+            hour: 'numeric',
+            minute: '2-digit',
+            hour12: true,
+            timeZone: 'Asia/Kolkata'
+        })
         : 'Never';
 
     const containerVariants = {
@@ -105,17 +133,19 @@ export default function Dashboard() {
         show: { opacity: 1, y: 0, transition: { type: 'spring', stiffness: 300, damping: 24 } }
     };
 
+
+
     return (
-        <div className="min-h-screen bg-slate-50 pb-20">
+        <div className="min-h-screen bg-slate-50">
             {/* Top Navigation */}
             <nav className="sticky top-0 z-50 bg-slate-900 border-b border-white/10 shadow-md">
                 <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
                     <div className="flex items-center justify-between h-16">
                         <div className="flex items-center gap-4">
-                            <div className="relative w-10 h-10">
-                                <Image src="/assets/logo.png" alt="Logo" fill className="object-contain" />
+                            <div className="relative w-48 h-12">
+                                <Image src="/assets/logo.png" alt="3Vidya Logo" fill className="object-contain" />
                             </div>
-                            <span className="text-xl font-bold bg-clip-text text-transparent bg-gradient-to-r from-cyan-400 to-blue-500">
+                            <span className="hidden md:inline-block text-lg font-bold bg-clip-text text-transparent bg-gradient-to-r from-cyan-400 to-blue-500 border-l border-slate-700 pl-4 ml-2">
                                 A Learning, Training & Compliance Platform
                             </span>
                         </div>

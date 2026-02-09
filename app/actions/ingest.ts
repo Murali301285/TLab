@@ -5,12 +5,13 @@ import { Groq } from 'groq-sdk';
 import pdf from 'pdf-parse/lib/pdf-parse.js';
 import mammoth from 'mammoth';
 import { PrismaClient } from '@prisma/client';
+import { prisma } from '@/lib/prisma';
 import { createWriteStream, appendFileSync, renameSync } from 'fs';
 import { readFile, mkdir, writeFile, rename } from 'fs/promises';
 import { Readable } from 'stream';
 import path from 'path';
 
-const prisma = new PrismaClient();
+// const prisma = new PrismaClient();
 
 // Configuration for Server Action
 // Configuration for Server Action (Handled by platform/config)
@@ -112,14 +113,14 @@ async function processFile(filePath: string, fileName: string, category: string,
                 .filter((p: string) => p.trim().length > 0)
                 .map((pageText: string, index: number) => ({
                     title: `Page ${index + 1}`,
-                    topics: [{ title: 'Content', content: pageText.trim() }] // Pre-filled content
+                    topics: [{ title: 'Content', content: pageText.replace(/\x00/g, '').trim() }] // Pre-filled content
                 }));
 
-            text = data.text.replace(/\|\|\|PAGE_BREAK\|\|\|/g, '\n\n'); // Clean text for sourceText
+            text = data.text.replace(/\x00/g, '').replace(/\|\|\|PAGE_BREAK\|\|\|/g, '\n\n'); // Clean text for sourceText
         } else {
             // STANDARD MODE: Full Text
             const data = await pdf(buffer);
-            text = data.text;
+            text = data.text.replace(/\x00/g, '');
         }
     } else if (fileName.endsWith('.docx')) {
         const result = await mammoth.extractRawText({ buffer });

@@ -1,0 +1,327 @@
+{
+  "node": {
+    "4095f76e2c494b716f8aaf8b797ea6941062b1ee1c": {
+      "workers": {
+        "app/admin/upload/page": {
+          "moduleId": 35772,
+          "async": false,
+          "exportedName": "uploadChunk",
+          "filename": "app/actions/ingest.ts"
+        }
+      },
+      "layer": {
+        "app/admin/upload/page": "action-browser"
+      },
+      "filename": "app/actions/ingest.ts",
+      "exportedName": "uploadChunk"
+    },
+    "403836938969377253fc4d6e102255138544f6d1f3": {
+      "workers": {
+        "app/admin/upload/page": {
+          "moduleId": 35772,
+          "async": false,
+          "exportedName": "finalizeUpload",
+          "filename": "app/actions/ingest.ts"
+        }
+      },
+      "layer": {
+        "app/admin/upload/page": "action-browser"
+      },
+      "filename": "app/actions/ingest.ts",
+      "exportedName": "finalizeUpload"
+    },
+    "003b560e6a28d492940f3fe2607a951ad8d0bfbf6a": {
+      "workers": {
+        "app/admin/upload/page": {
+          "moduleId": 35772,
+          "async": false,
+          "exportedName": "getAdminCourses",
+          "filename": "app/actions/courses.ts"
+        }
+      },
+      "layer": {
+        "app/admin/upload/page": "action-browser"
+      },
+      "filename": "app/actions/courses.ts",
+      "exportedName": "getAdminCourses"
+    },
+    "60780a8a984dd522f452dc89dddb6855b34996693f": {
+      "workers": {
+        "app/admin/upload/page": {
+          "moduleId": 35772,
+          "async": false,
+          "exportedName": "toggleCourseStatus",
+          "filename": "app/actions/courses.ts"
+        }
+      },
+      "layer": {
+        "app/admin/upload/page": "action-browser"
+      },
+      "filename": "app/actions/courses.ts",
+      "exportedName": "toggleCourseStatus"
+    },
+    "402899d31c86bc8391f4329be6b73d155fb7a096a5": {
+      "workers": {
+        "app/admin/upload/page": {
+          "moduleId": 35772,
+          "async": false,
+          "exportedName": "deleteCourse",
+          "filename": "app/actions/courses.ts"
+        }
+      },
+      "layer": {
+        "app/admin/upload/page": "action-browser"
+      },
+      "filename": "app/actions/courses.ts",
+      "exportedName": "deleteCourse"
+    },
+    "60a754828f966caf016fae46caa080db279a84659d": {
+      "workers": {
+        "app/admin/upload/page": {
+          "moduleId": 35772,
+          "async": false,
+          "exportedName": "updateCourse",
+          "filename": "app/actions/courses.ts"
+        }
+      },
+      "layer": {
+        "app/admin/upload/page": "action-browser"
+      },
+      "filename": "app/actions/courses.ts",
+      "exportedName": "updateCourse"
+    },
+    "0079fc21519f61acd457850c727ad0651263982645": {
+      "workers": {
+        "app/admin/upload/page": {
+          "moduleId": 35772,
+          "async": false,
+          "exportedName": "getCategories",
+          "filename": "app/actions/courses.ts"
+        }
+      },
+      "layer": {
+        "app/admin/upload/page": "action-browser"
+      },
+      "filename": "app/actions/courses.ts",
+      "exportedName": "getCategories"
+    },
+    "40354e43babc0943c0545ec1d5c34359794f0eea9f": {
+      "workers": {
+        "app/admin/upload/page": {
+          "moduleId": 35772,
+          "async": false,
+          "exportedName": "generateContentSummaryAction",
+          "filename": "app/actions/aiMock.ts"
+        }
+      },
+      "layer": {
+        "app/admin/upload/page": "action-browser"
+      },
+      "filename": "app/actions/aiMock.ts",
+      "exportedName": "generateContentSummaryAction"
+    },
+    "604f2d8864a149c7a11a6c9ecd98c4d2c4a5da1fe6": {
+      "workers": {
+        "app/admin/upload/page": {
+          "moduleId": 35772,
+          "async": false,
+          "exportedName": "aiAssistantChatAction",
+          "filename": "app/actions/aiMock.ts"
+        }
+      },
+      "layer": {
+        "app/admin/upload/page": "action-browser"
+      },
+      "filename": "app/actions/aiMock.ts",
+      "exportedName": "aiAssistantChatAction"
+    },
+    "40eeaf26cf5cee60e6970f227ccaffb775f9ada8e8": {
+      "workers": {
+        "app/admin/upload/page": {
+          "moduleId": 35772,
+          "async": false,
+          "exportedName": "generateDescriptionAction",
+          "filename": "app/actions/aiMock.ts"
+        }
+      },
+      "layer": {
+        "app/admin/upload/page": "action-browser"
+      },
+      "filename": "app/actions/aiMock.ts",
+      "exportedName": "generateDescriptionAction"
+    },
+    "404eb48586c9a323f7783a37afab727cd3d205b78f": {
+      "workers": {
+        "app/admin/upload/page": {
+          "moduleId": 35772,
+          "async": false,
+          "exportedName": "generateDesignCoverAction",
+          "filename": "app/actions/aiCover.ts"
+        }
+      },
+      "layer": {
+        "app/admin/upload/page": "action-browser"
+      },
+      "filename": "app/actions/aiCover.ts",
+      "exportedName": "generateDesignCoverAction"
+    },
+    "6011c7134284ce9daf2b60c22b4fbd02263eaa38e7": {
+      "workers": {
+        "app/admin/users/page": {
+          "moduleId": 37805,
+          "async": false,
+          "exportedName": "removeCourseAllocation",
+          "filename": "app/actions/enrollments.ts"
+        }
+      },
+      "layer": {
+        "app/admin/users/page": "action-browser"
+      },
+      "filename": "app/actions/enrollments.ts",
+      "exportedName": "removeCourseAllocation"
+    },
+    "7084ac0784d7e64c841a06ffbd7904cddf1d74bdfd": {
+      "workers": {
+        "app/admin/users/page": {
+          "moduleId": 37805,
+          "async": false,
+          "exportedName": "toggleCourseBlock",
+          "filename": "app/actions/enrollments.ts"
+        }
+      },
+      "layer": {
+        "app/admin/users/page": "action-browser"
+      },
+      "filename": "app/actions/enrollments.ts",
+      "exportedName": "toggleCourseBlock"
+    },
+    "403c1efd9244058dc663f99f8ab33f53c68743316e": {
+      "workers": {
+        "app/compliance/[courseId]/page": {
+          "moduleId": 599703,
+          "async": false,
+          "exportedName": "getComplianceCourses",
+          "filename": "app/actions/courses.ts"
+        },
+        "app/compliance/page": {
+          "moduleId": 522184,
+          "async": false,
+          "exportedName": "getComplianceCourses",
+          "filename": "app/actions/courses.ts"
+        },
+        "app/dashboard/page": {
+          "moduleId": 795689,
+          "async": false,
+          "exportedName": "getComplianceCourses",
+          "filename": "app/actions/courses.ts"
+        }
+      },
+      "layer": {
+        "app/compliance/[courseId]/page": "action-browser",
+        "app/compliance/page": "action-browser",
+        "app/dashboard/page": "action-browser"
+      },
+      "filename": "app/actions/courses.ts",
+      "exportedName": "getComplianceCourses"
+    },
+    "6018fa6ffb67a193a8d2db6115c21858ca0b1ab3b7": {
+      "workers": {
+        "app/compliance/[courseId]/page": {
+          "moduleId": 599703,
+          "async": false,
+          "exportedName": "signCourse",
+          "filename": "app/actions/courses.ts"
+        }
+      },
+      "layer": {
+        "app/compliance/[courseId]/page": "action-browser"
+      },
+      "filename": "app/actions/courses.ts",
+      "exportedName": "signCourse"
+    },
+    "70e629916ecf58cb4b3901ac97bb9bdc730922e49a": {
+      "workers": {
+        "app/compliance/[courseId]/page": {
+          "moduleId": 599703,
+          "async": false,
+          "exportedName": "saveQuizAttempt",
+          "filename": "app/actions/courses.ts"
+        }
+      },
+      "layer": {
+        "app/compliance/[courseId]/page": "action-browser"
+      },
+      "filename": "app/actions/courses.ts",
+      "exportedName": "saveQuizAttempt"
+    },
+    "4066f5c4e4985a6e0687cdb9230aa142d89c660e3b": {
+      "workers": {
+        "app/dashboard/page": {
+          "moduleId": 795689,
+          "async": false,
+          "exportedName": "getMyCourses",
+          "filename": "app/actions/courses.ts"
+        },
+        "app/learning/page": {
+          "moduleId": 201759,
+          "async": false,
+          "exportedName": "getMyCourses",
+          "filename": "app/actions/courses.ts"
+        }
+      },
+      "layer": {
+        "app/dashboard/page": "action-browser",
+        "app/learning/page": "action-browser"
+      },
+      "filename": "app/actions/courses.ts",
+      "exportedName": "getMyCourses"
+    },
+    "405d1a949b454afaa9fe993c55a268432916f05185": {
+      "workers": {
+        "app/dashboard/page": {
+          "moduleId": 795689,
+          "async": false,
+          "exportedName": "getRecentLearning",
+          "filename": "app/actions/courses.ts"
+        }
+      },
+      "layer": {
+        "app/dashboard/page": "action-browser"
+      },
+      "filename": "app/actions/courses.ts",
+      "exportedName": "getRecentLearning"
+    },
+    "78b2733bc31f8a2c9e690ae70700382ed8b757db0d": {
+      "workers": {
+        "app/learn/[courseId]/page": {
+          "moduleId": 83602,
+          "async": false,
+          "exportedName": "updateTopicProgress",
+          "filename": "app/actions/progress.ts"
+        }
+      },
+      "layer": {
+        "app/learn/[courseId]/page": "action-browser"
+      },
+      "filename": "app/actions/progress.ts",
+      "exportedName": "updateTopicProgress"
+    },
+    "60e57c68b12269ea43bea72f14bdd1bfb9b66fd8f7": {
+      "workers": {
+        "app/learn/[courseId]/page": {
+          "moduleId": 83602,
+          "async": false,
+          "exportedName": "completeCourse",
+          "filename": "app/actions/progress.ts"
+        }
+      },
+      "layer": {
+        "app/learn/[courseId]/page": "action-browser"
+      },
+      "filename": "app/actions/progress.ts",
+      "exportedName": "completeCourse"
+    }
+  },
+  "edge": {},
+  "encryptionKey": "iS5Tdc4aa72yNG9ClYRJFZrp2GI3gc5/VPsD//Csp5o="
+}
