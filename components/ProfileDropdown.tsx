@@ -58,6 +58,15 @@ export default function ProfileDropdown() {
                     <div className="px-4 py-3 border-b border-slate-100">
                         <p className="text-sm font-bold text-slate-900 truncate">{user.name}</p>
                         <p className="text-xs text-slate-500 truncate">{user.email}</p>
+                        {['SUPER_ADMIN', 'COMPANY_ADMIN', 'admin'].includes(user.role) && (
+                            <Link
+                                href={user.role === 'SUPER_ADMIN' ? '/admin/companies' : '/admin/users'}
+                                className="block mt-2 text-xs font-bold text-indigo-600 hover:text-indigo-800"
+                                onClick={() => setIsOpen(false)}
+                            >
+                                Access Admin Panel
+                            </Link>
+                        )}
                     </div>
 
                     <div className="py-1">

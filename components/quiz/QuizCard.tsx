@@ -24,7 +24,13 @@ export default function QuizCard({ attempt, index, onClick }: QuizCardProps) {
         return `${mins}m ${secs}s`;
     };
 
-    const percentage = Math.round((attempt.score / attempt.totalQuestions) * 100);
+    // Fix: Handle legacy data where score might be stored as percentage (e.g., 80)
+    // If score > totalQuestions, assume it's already a percentage (unless totalQuestions is 0)
+    const rawPercentage = (attempt.totalQuestions > 0) ? (attempt.score / attempt.totalQuestions) * 100 : 0;
+
+    // Check for legacy "percentage stored as score" (e.g. score=80, total=5 -> 1600%)
+    // If calculated percentage is > 100, then the score itself is likely the percentage
+    const percentage = rawPercentage > 100 ? attempt.score : Math.round(rawPercentage);
     const isPass = percentage >= 60;
 
     return (

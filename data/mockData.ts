@@ -227,7 +227,7 @@ export const USERS: User[] = [
     {
         id: 'u4',
         name: 'Diana Prince',
-        email: 'diana@tlab.com',
+        email: 'diana@3vidya.com',
         role: 'admin',
         department: 'Operations',
         status: 'active',
@@ -237,7 +237,7 @@ export const USERS: User[] = [
     {
         id: 'u1',
         name: 'Alice Johnson',
-        email: 'alice@tlab.com',
+        email: 'alice@3vidya.com',
         role: 'manager',
         department: 'Sales',
         status: 'active',
@@ -248,7 +248,7 @@ export const USERS: User[] = [
     {
         id: 'u2',
         name: 'Bob Smith',
-        email: 'bob@tlab.com',
+        email: 'bob@3vidya.com',
         role: 'employee',
         department: 'Sales',
         status: 'active',
@@ -259,7 +259,7 @@ export const USERS: User[] = [
     {
         id: 'u3',
         name: 'Charlie Brown',
-        email: 'charlie@tlab.com',
+        email: 'charlie@3vidya.com',
         role: 'employee',
         department: 'Sales', // Changed to Sales to group with Alice for demo
         status: 'inactive',
@@ -270,7 +270,7 @@ export const USERS: User[] = [
     {
         id: 'u5',
         name: 'Eve Polastri',
-        email: 'eve@tlab.com',
+        email: 'eve@3vidya.com',
         role: 'manager',
         department: 'Engineering',
         status: 'active',
@@ -281,7 +281,7 @@ export const USERS: User[] = [
     {
         id: 'u6',
         name: 'Frank Castle',
-        email: 'frank@tlab.com',
+        email: 'frank@3vidya.com',
         role: 'employee',
         department: 'Engineering',
         status: 'active',

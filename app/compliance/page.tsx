@@ -3,11 +3,13 @@
 import { useState, useEffect } from 'react';
 import Image from 'next/image';
 import Link from 'next/link';
+import { AnimatePresence } from 'framer-motion';
 import { Search, FileText, CheckCircle, Clock, ChevronLeft, ShieldCheck, PenTool } from 'lucide-react';
 import { useAuth } from '@/components/AuthProvider';
 import { getComplianceCourses } from '@/app/actions/courses';
 import { cn } from '@/lib/utils';
 import PageLoader from '@/components/PageLoader';
+import DashboardLoader from '@/components/DashboardLoader';
 
 const CourseImage = ({ src, alt, className }: { src: string, alt: string, className?: string }) => {
     const [imgSrc, setImgSrc] = useState(src);
@@ -35,6 +37,7 @@ export default function ComplianceDashboard() {
     const { user, isLoading: authLoading } = useAuth();
     const [docs, setDocs] = useState<any[]>([]);
     const [loading, setLoading] = useState(true);
+    const [showLoader, setShowLoader] = useState(true);
     const [tab, setTab] = useState<'pending' | 'signed'>('pending');
     const [searchTerm, setSearchTerm] = useState('');
 
@@ -60,10 +63,20 @@ export default function ComplianceDashboard() {
         return matchesSearch && matchesTab;
     });
 
-    if (authLoading || loading) return <PageLoader message="Loading Policy Center..." />;
+    // if (authLoading) return <PageLoader message="Loading Policy Center..." />;
 
     return (
-        <div className="min-h-screen bg-slate-50 pb-20">
+        <div className="min-h-screen bg-slate-50 pb-20 relative">
+            <AnimatePresence>
+                {(showLoader || authLoading) && (
+                    <DashboardLoader
+                        isLoading={loading}
+                        message="Loading your compliance docs..."
+                        onFinish={() => setShowLoader(false)}
+                    />
+                )}
+            </AnimatePresence>
+
             {/* Header */}
             <div className="bg-white border-b border-slate-200 sticky top-0 z-30 shadow-sm">
                 <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 h-16 flex items-center justify-between">

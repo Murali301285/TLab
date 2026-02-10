@@ -42,7 +42,9 @@ import { useRouter } from 'next/navigation';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import PageLoader from '@/components/PageLoader';
+import DashboardLoader from '@/components/DashboardLoader';
 import { useAuth } from '@/components/AuthProvider';
+import { motion, AnimatePresence } from 'framer-motion';
 
 const CourseImage = ({ src, alt, className }: { src?: string, alt: string, className?: string }) => {
     const [imgSrc, setImgSrc] = useState(src || '/assets/placeholder-course.png');
@@ -145,6 +147,7 @@ export default function AdminUploadPage() {
     const [generatedCoverUrl, setGeneratedCoverUrl] = useState<string | null>(null);
     const [showColorPicker, setShowColorPicker] = useState(false);
     const [coverFontColor, setCoverFontColor] = useState('#000000');
+    const [showLoader, setShowLoader] = useState(true);
 
     // Duplicate Error Modal
     const [showDuplicateModal, setShowDuplicateModal] = useState(false);
@@ -181,13 +184,90 @@ export default function AdminUploadPage() {
         }
     }, [viewMode, user]);
 
-    if (authLoading || (isLoadingCourses && viewMode === 'list' && adminCourses.length === 0)) return <PageLoader message="Loading Content Manager..." />;
-
     useEffect(() => {
         if (chatEndRef.current) {
             chatEndRef.current.scrollIntoView({ behavior: 'smooth' });
         }
     }, [chatMessages]);
+
+    // PDF.js worker setup
+    useEffect(() => {
+        const loadPdfWorker = async () => {
+            const pdfjs = await import('pdfjs-dist');
+            // Use local worker file from public folder for reliability
+            pdfjs.GlobalWorkerOptions.workerSrc = '/pdf.worker.min.mjs';
+        };
+        loadPdfWorker();
+    }, []);
+
+    // Compliance Effect: Auto-select Policy category
+    useEffect(() => {
+        if (isCompliance) {
+            const policyCat = categories.find(c => c.name.toLowerCase() === 'policy');
+            if (policyCat) {
+                setSelectedCategory(policyCat.id);
+            }
+        }
+    }, [isCompliance, categories]);
+
+    // Voice Recognition Setup
+    useEffect(() => {
+        if (typeof window !== 'undefined') {
+            const SpeechRecognition = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
+            if (SpeechRecognition) {
+                const recognitionInstance = new SpeechRecognition();
+                recognitionInstance.continuous = true;
+                recognitionInstance.interimResults = true;
+                recognitionInstance.lang = 'en-US';
+
+                recognitionInstance.onresult = (event: any) => {
+                    const transcript = Array.from(event.results)
+                        .map((result: any) => result[0])
+                        .map((result: any) => result.transcript)
+                        .join('');
+
+                    setChatInput(transcript);
+
+                    // Clear existing silence timer
+                    if (silenceTimerRef.current) {
+                        clearTimeout(silenceTimerRef.current);
+                    }
+
+                    // Set new silence timer (auto-send after 2 seconds of silence)
+                    silenceTimerRef.current = setTimeout(() => {
+                        if (transcript.trim()) {
+                            recognitionInstance.stop();
+                            setIsListening(false);
+                            // Trigger send
+                            setTimeout(() => {
+                                const sendBtn = document.getElementById('voice-send-btn');
+                                if (sendBtn) sendBtn.click();
+                            }, 100);
+                        }
+                    }, 2000);
+                };
+
+                recognitionInstance.onerror = (event: any) => {
+                    console.error('Speech recognition error:', event.error);
+                    setIsListening(false);
+                };
+
+                recognitionInstance.onend = () => {
+                    setIsListening(false);
+                };
+
+                setRecognition(recognitionInstance);
+            }
+        }
+
+        return () => {
+            if (silenceTimerRef.current) {
+                clearTimeout(silenceTimerRef.current);
+            }
+        };
+    }, []);
+
+
 
     const fetchCategories = async () => {
         try {
@@ -218,25 +298,9 @@ export default function AdminUploadPage() {
         }
     };
 
-    // PDF.js worker setup
-    useEffect(() => {
-        const loadPdfWorker = async () => {
-            const pdfjs = await import('pdfjs-dist');
-            // Use local worker file from public folder for reliability
-            pdfjs.GlobalWorkerOptions.workerSrc = '/pdf.worker.min.mjs';
-        };
-        loadPdfWorker();
-    }, []);
 
-    // Compliance Effect: Auto-select Policy category
-    useEffect(() => {
-        if (isCompliance) {
-            const policyCat = categories.find(c => c.name.toLowerCase() === 'policy');
-            if (policyCat) {
-                setSelectedCategory(policyCat.id);
-            }
-        }
-    }, [isCompliance, categories]);
+
+
 
     const generateCoverFromPdf = async (file: File): Promise<File | null> => {
         try {
@@ -403,62 +467,7 @@ export default function AdminUploadPage() {
         setIsChatLoading(false);
     };
 
-    // Voice Recognition Setup
-    useEffect(() => {
-        if (typeof window !== 'undefined') {
-            const SpeechRecognition = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
-            if (SpeechRecognition) {
-                const recognitionInstance = new SpeechRecognition();
-                recognitionInstance.continuous = true;
-                recognitionInstance.interimResults = true;
-                recognitionInstance.lang = 'en-US';
 
-                recognitionInstance.onresult = (event: any) => {
-                    const transcript = Array.from(event.results)
-                        .map((result: any) => result[0])
-                        .map((result: any) => result.transcript)
-                        .join('');
-
-                    setChatInput(transcript);
-
-                    // Clear existing silence timer
-                    if (silenceTimerRef.current) {
-                        clearTimeout(silenceTimerRef.current);
-                    }
-
-                    // Set new silence timer (auto-send after 2 seconds of silence)
-                    silenceTimerRef.current = setTimeout(() => {
-                        if (transcript.trim()) {
-                            recognitionInstance.stop();
-                            setIsListening(false);
-                            // Trigger send
-                            setTimeout(() => {
-                                const sendBtn = document.getElementById('voice-send-btn');
-                                if (sendBtn) sendBtn.click();
-                            }, 100);
-                        }
-                    }, 2000);
-                };
-
-                recognitionInstance.onerror = (event: any) => {
-                    console.error('Speech recognition error:', event.error);
-                    setIsListening(false);
-                };
-
-                recognitionInstance.onend = () => {
-                    setIsListening(false);
-                };
-
-                setRecognition(recognitionInstance);
-            }
-        }
-
-        return () => {
-            if (silenceTimerRef.current) {
-                clearTimeout(silenceTimerRef.current);
-            }
-        };
-    }, []);
 
     const toggleVoiceInput = () => {
         if (!recognition) {
@@ -803,7 +812,17 @@ export default function AdminUploadPage() {
         : [];
 
     return (
-        <div className="h-screen bg-slate-50 flex flex-col overflow-hidden">
+        <div className="h-screen bg-slate-50 flex flex-col overflow-hidden relative">
+            <AnimatePresence>
+                {(authLoading || (isLoadingCourses && viewMode === 'list' && adminCourses.length === 0) || showLoader) && (
+                    <DashboardLoader
+                        key="loader"
+                        isLoading={isLoadingCourses && viewMode === 'list' && adminCourses.length === 0}
+                        message="Loading admin data..."
+                        onFinish={() => setShowLoader(false)}
+                    />
+                )}
+            </AnimatePresence>
             {/* Header */}
             <nav className="sticky top-0 z-50 bg-slate-900 border-b border-white/10 shadow-md">
                 <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">

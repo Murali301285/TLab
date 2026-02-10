@@ -1,25 +1,52 @@
 'use client';
-
-import { useState } from 'react';
-import { LayoutDashboard, Layers, BookOpen, Briefcase, Settings, ChevronRight, Award } from 'lucide-react';
+import { useState, useMemo } from 'react';
+import { LayoutDashboard, Layers, BookOpen, Briefcase, Settings, ChevronRight, Award, BarChart2, Crown, Building2, Globe } from 'lucide-react';
 import Link from 'next/link';
 import { cn } from '@/lib/utils';
 import DepartmentMaster from '@/components/admin/DepartmentMaster';
 import CategoryMaster from '@/components/admin/CategoryMaster';
 import SubCategoryMaster from '@/components/admin/SubCategoryMaster';
 import CertificateMaster from '@/components/admin/CertificateMaster';
+import TokenUsageStats from '@/components/admin/TokenUsageStats';
+import PlanMaster from '@/components/admin/PlanMaster';
+import CompanyMaster from '@/components/admin/CompanyMaster';
+import CurrencyMaster from '@/components/admin/CurrencyMaster';
+import { useAuth } from '@/components/AuthProvider';
+import DashboardLoader from '@/components/DashboardLoader';
 
-type Tab = 'department' | 'category' | 'subcategory' | 'certificate';
+type Tab = 'department' | 'category' | 'subcategory' | 'certificate' | 'token-usage' | 'plans' | 'companies' | 'currency';
 
 export default function ConfigurationPage() {
+    const { user, isLoading } = useAuth();
     const [activeTab, setActiveTab] = useState<Tab>('department');
 
-    const menuItems = [
-        { id: 'department', label: 'Department Master', icon: Briefcase },
-        { id: 'category', label: 'Category Master', icon: Layers },
-        { id: 'subcategory', label: 'Sub-Category Master', icon: BookOpen },
-        { id: 'certificate', label: 'Certificate Master', icon: Award },
-    ];
+    const menuItems = useMemo(() => {
+        if (!user) return [];
+
+        const allItems = [
+            { id: 'companies', label: 'Company Master', icon: Building2, roles: ['SUPER_ADMIN'] },
+            { id: 'plans', label: 'Plan Master', icon: Crown, roles: ['SUPER_ADMIN'] },
+            { id: 'currency', label: 'Currency Master', icon: Globe, roles: ['SUPER_ADMIN'] },
+            { id: 'department', label: 'Department Master', icon: Briefcase, roles: ['SUPER_ADMIN', 'COMPANY_ADMIN'] },
+            { id: 'category', label: 'Category Master', icon: Layers, roles: ['SUPER_ADMIN', 'COMPANY_ADMIN'] },
+            { id: 'subcategory', label: 'Sub-Category Master', icon: BookOpen, roles: ['SUPER_ADMIN', 'COMPANY_ADMIN'] },
+            { id: 'certificate', label: 'Certificate Master', icon: Award, roles: ['SUPER_ADMIN'] },
+            { id: 'token-usage', label: 'Token Usage', icon: BarChart2, roles: ['SUPER_ADMIN', 'COMPANY_ADMIN'] },
+        ];
+
+        return allItems.filter(item => item.roles.includes(user.role || ''));
+    }, [user]);
+
+    if (isLoading) return <DashboardLoader />;
+
+    if (menuItems.length === 0) return <div className="p-8 text-center text-slate-500">Access Denied</div>;
+
+    // Ensure active tab is valid
+    if (!menuItems.find(i => i.id === activeTab)) {
+        if (menuItems.length > 0 && activeTab !== menuItems[0].id) {
+            setActiveTab(menuItems[0].id as Tab);
+        }
+    }
 
     return (
         <div className="h-screen bg-slate-50 flex overflow-hidden">
@@ -61,8 +88,6 @@ export default function ConfigurationPage() {
                 </div>
             </aside>
 
-            {/* Mobile Header (Simplified for now, assuming standard mobile nav handled elsewhere or hidden sidebar implies desktop focus for this task, but keeping basic structure) */}
-
             {/* Main Content */}
             <main className="flex-1 ml-0 lg:ml-64 flex flex-col h-full overflow-hidden">
                 <div className="flex-1 p-4 lg:p-8 pt-20 lg:pt-8 flex flex-col min-h-0 overflow-hidden">
@@ -75,10 +100,14 @@ export default function ConfigurationPage() {
                         </div>
 
                         <div className="flex-1 min-h-0 relative">
-                            {activeTab === 'department' && <DepartmentMaster />}
-                            {activeTab === 'category' && <CategoryMaster />}
-                            {activeTab === 'subcategory' && <SubCategoryMaster />}
-                            {activeTab === 'certificate' && <CertificateMaster />}
+                            {activeTab === 'companies' && menuItems.find(i => i.id === 'companies') && <CompanyMaster />}
+                            {activeTab === 'plans' && menuItems.find(i => i.id === 'plans') && <PlanMaster />}
+                            {activeTab === 'currency' && menuItems.find(i => i.id === 'currency') && <CurrencyMaster />}
+                            {activeTab === 'department' && menuItems.find(i => i.id === 'department') && <DepartmentMaster />}
+                            {activeTab === 'category' && menuItems.find(i => i.id === 'category') && <CategoryMaster />}
+                            {activeTab === 'subcategory' && menuItems.find(i => i.id === 'subcategory') && <SubCategoryMaster />}
+                            {activeTab === 'certificate' && menuItems.find(i => i.id === 'certificate') && <CertificateMaster />}
+                            {activeTab === 'token-usage' && menuItems.find(i => i.id === 'token-usage') && <TokenUsageStats />}
                         </div>
                     </div>
                 </div>

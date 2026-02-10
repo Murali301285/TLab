@@ -25,13 +25,15 @@ export async function GET(req: NextRequest) {
 
         const user = await prisma.user.findUnique({
             where: { id: userId },
-            select: { id: true, name: true, email: true, role: true, image: true, department: true }
+            select: { id: true, name: true, email: true, role: true, image: true, department: true, companyId: true, company: { select: { name: true, shortName: true } } }
         });
         console.log("Debug: /api/auth/me fetched user:", user);
 
         if (!user) {
             console.log("Debug: User not found in DB for ID:", payload.userId);
-            return NextResponse.json({ user: null, error: `User not found for ID: ${payload.userId}` }, { status: 200 });
+            const response = NextResponse.json({ user: null, error: `User not found for ID: ${payload.userId}` }, { status: 200 });
+            response.cookies.delete('auth-token');
+            return response;
         }
 
         return NextResponse.json({ user });

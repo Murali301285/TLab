@@ -38,13 +38,13 @@ export default function ConceptPage() {
 
     // Load Speed Preference
     useEffect(() => {
-        const savedSpeed = localStorage.getItem('tlab_voice_speed');
+        const savedSpeed = localStorage.getItem('3vidya_voice_speed');
         if (savedSpeed) setPlaybackSpeed(parseFloat(savedSpeed));
     }, []);
 
     const handleSpeedChange = (speed: number) => {
         setPlaybackSpeed(speed);
-        localStorage.setItem('tlab_voice_speed', speed.toString());
+        localStorage.setItem('3vidya_voice_speed', speed.toString());
         // If speaking, restart? No, just save for next utterance is standard.
     };
 

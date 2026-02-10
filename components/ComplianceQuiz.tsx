@@ -144,7 +144,7 @@ export default function ComplianceQuiz({
 
         try {
             const result = {
-                score: finalScore,
+                score: correctCount, // Fix: Send raw score, not percentage
                 totalQuestions: questions.length,
                 timeTaken: 0,
                 quizData: { questions, userAnswers }

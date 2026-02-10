@@ -17,6 +17,9 @@ export async function POST(req: NextRequest) {
                     equals: email,
                     mode: 'insensitive'
                 }
+            },
+            include: {
+                company: true
             }
         });
         if (!user) {
@@ -32,14 +35,47 @@ export async function POST(req: NextRequest) {
             return NextResponse.json({ error: 'Login is blocked. Contact Admin.' }, { status: 403 });
         }
 
+        // Check Company Validity (SaaS Logic)
+        if (user.companyId) {
+            // Import dynamically or at top if possible. Using dynamic for cleaner diff here or top level.
+            // Let's assume standard import at top.
+            // Actually, I can just check the fields directly here since we included company relation.
+            // But using the utility is cleaner for future consistency. 
+            // However, the utility fetches company again. 
+            // For now, let's keep the direct check for performance but ENHANCE it with the new fields.
+
+            if (!user.company.isActive) {
+                return NextResponse.json({ error: 'Company account is inactive. Contact Support.' }, { status: 403 });
+            }
+
+            if (user.company.licenseExpiresAt && new Date() > new Date(user.company.licenseExpiresAt)) {
+                return NextResponse.json({ error: 'Company license has expired. Please renew.' }, { status: 403 });
+            }
+        }
+
         // Generate JWT
-        const token = await new jose.SignJWT({ id: user.id, email: user.email, role: user.role })
+        const token = await new jose.SignJWT({
+            id: user.id,
+            email: user.email,
+            role: user.role,
+            companyId: user.companyId
+        })
             .setProtectedHeader({ alg: 'HS256' })
             .setIssuedAt()
             .setExpirationTime('1d')
             .sign(JWT_SECRET);
 
-        const response = NextResponse.json({ success: true, user: { id: user.id, name: user.name, email: user.email, role: user.role, image: user.image } });
+        const response = NextResponse.json({
+            success: true,
+            user: {
+                id: user.id,
+                name: user.name,
+                email: user.email,
+                role: user.role,
+                image: user.image,
+                companyId: user.companyId
+            }
+        });
 
         // Set Cookie
         response.cookies.set('auth-token', token, {

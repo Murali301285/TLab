@@ -24,11 +24,28 @@ export async function middleware(req: NextRequest) {
     }
 
     try {
-        await jwtVerify(token, JWT_SECRET);
+        const { payload } = await jwtVerify(token, JWT_SECRET);
+
+        // Super Admin & Company Admin Protection
+        if (pathname.startsWith('/admin/configurations')) {
+            if (payload.role !== 'SUPER_ADMIN' && payload.role !== 'COMPANY_ADMIN') {
+                return NextResponse.redirect(new URL('/dashboard', req.url));
+            }
+        }
+
+        // Companies list is strictly Super Admin
+        if (pathname.startsWith('/admin/companies')) {
+            if (payload.role !== 'SUPER_ADMIN') {
+                return NextResponse.redirect(new URL('/dashboard', req.url));
+            }
+        }
+
         return NextResponse.next();
     } catch (error) {
         // Invalid token
-        return NextResponse.redirect(new URL('/', req.url));
+        const response = NextResponse.redirect(new URL('/', req.url));
+        response.cookies.delete('auth-token');
+        return response;
     }
 }
 

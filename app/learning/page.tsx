@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from 'react';
 import Link from 'next/link';
+import { AnimatePresence } from 'framer-motion';
 import { COURSES, BOOKS, Book, Course } from '@/data/mockData';
 import {
     BookOpen,
@@ -28,6 +29,7 @@ import ProfileDropdown from '@/components/ProfileDropdown';
 import { useAuth } from '@/components/AuthProvider';
 import { getMyCourses } from '@/app/actions/courses';
 import PageLoader from '@/components/PageLoader';
+import DashboardLoader from '@/components/DashboardLoader';
 
 export default function MyLearningPage() {
     const [activeTab, setActiveTab] = useState<'courses' | 'library' | 'completed' | 'quizzes' | 'certificates'>('courses');
@@ -42,6 +44,7 @@ export default function MyLearningPage() {
     const [allCourses, setAllCourses] = useState<any[]>(COURSES);
     const [enrolledCourses, setEnrolledCourses] = useState<any[]>([]);
     const [isLoading, setIsLoading] = useState(true);
+    const [showLoader, setShowLoader] = useState(true);
 
     // Certificates State
     const [circles, setCircles] = useState<any[]>([]); // Circles? No, Certificates
@@ -292,12 +295,22 @@ export default function MyLearningPage() {
         }
     };
 
-    if (authLoading || isLoading) return <PageLoader message="Loading your learning center..." />;
+    // if (authLoading) return <PageLoader message="Loading your learning center..." />;
 
     return (
-        <div className="min-h-screen bg-slate-50 pb-20">
+        <div className="min-h-screen bg-slate-50 pb-20 relative">
+            <AnimatePresence>
+                {(showLoader || authLoading) && (
+                    <DashboardLoader
+                        isLoading={isLoading}
+                        message="Loading your content..."
+                        onFinish={() => setShowLoader(false)}
+                    />
+                )}
+            </AnimatePresence>
+
             {/* Navigation */}
-            <nav className="sticky top-0 z-50 bg-slate-900 border-b border-white/10 shadow-md">
+            <nav className="sticky top-0 z-40 bg-slate-900 border-b border-white/10 shadow-md">
                 <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
                     <div className="relative flex items-center justify-center h-16">
                         <div className="absolute left-0 flex items-center gap-4">

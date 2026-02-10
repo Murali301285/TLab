@@ -7,9 +7,11 @@ import { Search, Bell, BookOpen, Clock, Award, ArrowRight, Bot, Users, FileText,
 import ProfileDropdown from '@/components/ProfileDropdown';
 import { useAuth } from '@/components/AuthProvider';
 import PageLoader from '@/components/PageLoader';
+import DashboardLoader from '@/components/DashboardLoader';
 import { getMyCourses, getRecentLearning, getComplianceCourses } from '@/app/actions/courses';
 
-import { motion } from 'framer-motion';
+import { motion, AnimatePresence, Variants } from 'framer-motion';
+import SuperAdminStats from '@/components/admin/SuperAdminStats';
 
 // ... (keep imports)
 
@@ -20,21 +22,16 @@ export default function Dashboard() {
     const [complianceDocs, setComplianceDocs] = useState<any[]>([]);
     // Default dataLoading to true to prevent flash of content before load
     const [dataLoading, setDataLoading] = useState(true);
+    const [showLoader, setShowLoader] = useState(true);
 
     const [sortOption, setSortOption] = useState('latest_read');
 
-    // Add PageLoader import at top (assumed or manually add)
-    // Actually, I should add import first separately, or do a multi_replace for import and component.
-    // The previous view shows imports up to line 15. The `useAuth` is at line 8.
-    // I can add import after line 8.
-
-    // Wait, replace_file_content replaces contiguous blocks.
-    // I need to add import AND use it.
-    // If I use multi_replace, I can do both.
-
-    // Let's use multi_replace.
-
     useEffect(() => {
+        // If auth finishes and no user, stop data loading to prevent infinite loader
+        if (!authLoading && !user) {
+            setDataLoading(false);
+        }
+
         async function loadCourses() {
             if (!user?.id) return;
 
@@ -47,11 +44,9 @@ export default function Dashboard() {
                 ]);
 
                 if (myCoursesRes.success) {
-                    console.log('[Dashboard] My Courses Loaded:', (myCoursesRes.data || []).map((c: any) => ({ id: c.id, completedAt: c.completedAt })));
                     setCourses(myCoursesRes.data || []);
                 }
                 if (recentRes.success) {
-                    console.log('[Dashboard] Recent Courses Loaded:', (recentRes.data || []).map((c: any) => ({ id: c.id, completedAt: c.completedAt })));
                     setRecentCourses(recentRes.data || []);
                 }
                 if (complianceRes.success) {
@@ -67,7 +62,7 @@ export default function Dashboard() {
         if (user) {
             loadCourses();
         }
-    }, [user]);
+    }, [user, authLoading]);
 
     useEffect(() => {
         // Add scrollbar-hover class to html element to hide scrollbar by default
@@ -77,9 +72,9 @@ export default function Dashboard() {
         };
     }, []);
 
-    if (authLoading || dataLoading) return <PageLoader message="Loading your dashboard..." />;
+    // Removed early return for loader to allow background rendering
 
-    const isAdmin = user?.role === 'admin';
+    const isAdmin = user?.role === 'admin' || user?.role === 'SUPER_ADMIN' || user?.role === 'COMPANY_ADMIN';
 
     const completedCount = courses.filter(c => c.completedAt).length;
     const totalSeconds = courses.reduce((acc, c) => acc + (c.totalTime || 0), 0);
@@ -118,7 +113,7 @@ export default function Dashboard() {
         })
         : 'Never';
 
-    const containerVariants = {
+    const containerVariants: Variants = {
         hidden: { opacity: 0 },
         show: {
             opacity: 1,
@@ -128,7 +123,7 @@ export default function Dashboard() {
         }
     };
 
-    const itemVariants = {
+    const itemVariants: Variants = {
         hidden: { opacity: 0, y: 20 },
         show: { opacity: 1, y: 0, transition: { type: 'spring', stiffness: 300, damping: 24 } }
     };
@@ -136,7 +131,18 @@ export default function Dashboard() {
 
 
     return (
-        <div className="min-h-screen bg-slate-50">
+        <div className="min-h-screen bg-slate-50 relative">
+            <AnimatePresence>
+                {(authLoading || showLoader) && (
+                    <DashboardLoader
+                        key="loader"
+                        isLoading={dataLoading}
+                        message="Loading your dashboard..."
+                        onFinish={() => setShowLoader(false)}
+                    />
+                )}
+            </AnimatePresence>
+
             {/* Top Navigation */}
             <nav className="sticky top-0 z-50 bg-slate-900 border-b border-white/10 shadow-md">
                 <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
@@ -202,34 +208,39 @@ export default function Dashboard() {
 
             <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 mt-8 relative z-10">
 
-                {/* Quick Stats - Visible to All */}
-                <motion.div
-                    variants={containerVariants}
-                    initial="hidden"
-                    animate="show"
-                    className="grid grid-cols-1 md:grid-cols-4 gap-6 mb-10"
-                >
-                    <Link href="/learning" className="block h-full">
-                        <motion.div variants={itemVariants} whileHover={{ scale: 1.02 }} className="glass-card py-8 px-6 rounded-xl flex flex-col items-center justify-center bg-cyan-50 shadow-sm transition-all text-center border border-slate-100 h-full hover:shadow-lg hover:border-cyan-100 cursor-pointer">
-                            <p className="text-xs font-bold text-slate-400 uppercase tracking-[0.2em] mb-2">Assigned courses</p>
-                            <p className="text-4xl font-extrabold text-slate-900">{courses.length}</p>
+                {/* Super Admin Stats */}
+                {isAdmin && <SuperAdminStats />}
+
+                {/* Quick Stats - Visible to All (Learners) */}
+                {!isAdmin && (
+                    <motion.div
+                        variants={containerVariants}
+                        initial="hidden"
+                        animate="show"
+                        className="grid grid-cols-1 md:grid-cols-4 gap-6 mb-10"
+                    >
+                        <Link href="/learning" className="block h-full">
+                            <motion.div variants={itemVariants} whileHover={{ scale: 1.02 }} className="glass-card py-8 px-6 rounded-xl flex flex-col items-center justify-center bg-cyan-50 shadow-sm transition-all text-center border border-slate-100 h-full hover:shadow-lg hover:border-cyan-100 cursor-pointer">
+                                <p className="text-xs font-bold text-slate-400 uppercase tracking-[0.2em] mb-2">Assigned courses</p>
+                                <p className="text-4xl font-extrabold text-slate-900">{courses.length}</p>
+                            </motion.div>
+                        </Link>
+                        <motion.div variants={itemVariants} whileHover={{ scale: 1.02 }} className="glass-card py-8 px-6 rounded-xl flex flex-col items-center justify-center bg-green-50 shadow-sm text-center border border-slate-100 h-full hover:shadow-lg hover:border-green-100 transition-all">
+                            <p className="text-xs font-bold text-slate-400 uppercase tracking-[0.2em] mb-2">Completed courses</p>
+                            <p className="text-4xl font-extrabold text-green-600">{completedCount}</p>
                         </motion.div>
-                    </Link>
-                    <motion.div variants={itemVariants} whileHover={{ scale: 1.02 }} className="glass-card py-8 px-6 rounded-xl flex flex-col items-center justify-center bg-green-50 shadow-sm text-center border border-slate-100 h-full hover:shadow-lg hover:border-green-100 transition-all">
-                        <p className="text-xs font-bold text-slate-400 uppercase tracking-[0.2em] mb-2">Completed courses</p>
-                        <p className="text-4xl font-extrabold text-green-600">{completedCount}</p>
-                    </motion.div>
-                    <motion.div variants={itemVariants} whileHover={{ scale: 1.02 }} className="glass-card py-8 px-6 rounded-xl flex flex-col items-center justify-center bg-blue-50 shadow-sm text-center border border-slate-100 h-full hover:shadow-lg hover:border-cyan-100 transition-all">
-                        <p className="text-xs font-bold text-slate-400 uppercase tracking-[0.2em] mb-2">Learning hours</p>
-                        <p className="text-4xl font-extrabold text-slate-900">{learningHours}</p>
-                    </motion.div>
-                    <Link href="/compliance" className="block h-full">
-                        <motion.div variants={itemVariants} whileHover={{ scale: 1.02 }} className="glass-card py-8 px-6 rounded-xl flex flex-col items-center justify-center bg-amber-50 shadow-sm transition-all text-center border border-slate-100 h-full hover:shadow-lg hover:border-amber-100 cursor-pointer">
-                            <p className="text-xs font-bold text-slate-400 uppercase tracking-[0.2em] mb-2">Policy review</p>
-                            <p className="text-4xl font-extrabold text-amber-600">{pendingPolicies}</p>
+                        <motion.div variants={itemVariants} whileHover={{ scale: 1.02 }} className="glass-card py-8 px-6 rounded-xl flex flex-col items-center justify-center bg-blue-50 shadow-sm text-center border border-slate-100 h-full hover:shadow-lg hover:border-cyan-100 transition-all">
+                            <p className="text-xs font-bold text-slate-400 uppercase tracking-[0.2em] mb-2">Learning hours</p>
+                            <p className="text-4xl font-extrabold text-slate-900">{learningHours}</p>
                         </motion.div>
-                    </Link>
-                </motion.div>
+                        <Link href="/compliance" className="block h-full">
+                            <motion.div variants={itemVariants} whileHover={{ scale: 1.02 }} className="glass-card py-8 px-6 rounded-xl flex flex-col items-center justify-center bg-amber-50 shadow-sm transition-all text-center border border-slate-100 h-full hover:shadow-lg hover:border-amber-100 cursor-pointer">
+                                <p className="text-xs font-bold text-slate-400 uppercase tracking-[0.2em] mb-2">Policy review</p>
+                                <p className="text-4xl font-extrabold text-amber-600">{pendingPolicies}</p>
+                            </motion.div>
+                        </Link>
+                    </motion.div>
+                )}
 
                 {/* Main Modules Navigation */}
                 <motion.div
@@ -238,6 +249,7 @@ export default function Dashboard() {
                     animate="show"
                     className="mb-10 space-y-6"
                 >
+
                     {/* User Features */}
                     <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
                         <Link href="/learning" className="group">
@@ -303,7 +315,7 @@ export default function Dashboard() {
 
                     {/* Admin Features */}
                     {isAdmin && (
-                        <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+                        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 mb-6">
                             <Link href="/admin/upload" className="group">
                                 <motion.div variants={itemVariants} whileHover={{ y: -5 }} className="glass-card p-6 rounded-xl border border-slate-200 hover:border-blue-300 hover:shadow-lg transition-all h-full bg-white flex flex-col items-center text-center">
                                     <div className="p-3 bg-blue-50 rounded-lg mb-4 group-hover:bg-blue-100 transition-colors">
@@ -337,19 +349,20 @@ export default function Dashboard() {
                             <Link href="/admin/configurations" className="group">
                                 <motion.div variants={itemVariants} whileHover={{ y: -5 }} className="glass-card p-6 rounded-xl border border-slate-200 hover:border-slate-300 hover:shadow-lg transition-all h-full bg-white flex flex-col items-center text-center">
                                     <div className="p-3 bg-slate-100 rounded-lg mb-4 group-hover:bg-slate-200 transition-colors">
-                                        <Settings className="h-8 w-8 text-slate-600" />
+                                        <Settings className="h-8 w-8 text-slate-700" />
                                     </div>
                                     <h3 className="text-xl font-bold text-slate-900 group-hover:text-slate-700 mb-2">Configuration Management</h3>
                                     <p className="text-sm text-slate-500 mb-4 flex-1">
                                         System settings, integration preferences, and platform defaults.
                                     </p>
-                                    <span className="text-slate-600 font-semibold text-sm flex items-center gap-1 group-hover:translate-x-1 transition-transform">
+                                    <span className="text-slate-700 font-semibold text-sm flex items-center gap-1 group-hover:translate-x-1 transition-transform">
                                         Configure <ArrowRight className="h-4 w-4" />
                                     </span>
                                 </motion.div>
                             </Link>
                         </div>
                     )}
+
                 </motion.div>
 
                 {/* Continue Learning */}
@@ -414,6 +427,6 @@ export default function Dashboard() {
                     </motion.div>
                 )}
             </div>
-        </div>
+        </div >
     );
 }

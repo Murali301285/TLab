@@ -19,17 +19,26 @@ export async function GET(req: NextRequest) {
 
         // Parse query params for filtering
         const { searchParams } = new URL(req.url);
+        const type = searchParams.get('type'); // 'compliance' or 'quiz' (default: all)
         const search = searchParams.get('search') || '';
         const limit = parseInt(searchParams.get('limit') || '50');
 
+        const whereCondition: any = {
+            userId,
+            topicName: {
+                contains: search,
+                mode: 'insensitive'
+            }
+        };
+
+        if (type === 'compliance') {
+            whereCondition.course = { isCompliance: true };
+        } else if (type === 'quiz') {
+            whereCondition.course = { isCompliance: false };
+        }
+
         const quizzes = await prisma.quizAttempt.findMany({
-            where: {
-                userId,
-                topicName: {
-                    contains: search,
-                    mode: 'insensitive'
-                }
-            },
+            where: whereCondition,
             orderBy: {
                 submittedAt: 'desc'
             },
@@ -38,6 +47,12 @@ export async function GET(req: NextRequest) {
                 topic: {
                     select: {
                         chapterId: true
+                    }
+                },
+                course: {
+                    select: {
+                        title: true,
+                        isCompliance: true
                     }
                 }
             }

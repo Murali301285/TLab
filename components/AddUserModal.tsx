@@ -135,7 +135,7 @@ export default function AddUserModal({ isOpen, onClose, onAdd, availableUsers }:
                                     value={formData.email}
                                     onChange={e => setFormData({ ...formData, email: e.target.value })}
                                     className="w-full px-4 py-2 border border-slate-200 rounded-lg focus:ring-2 focus:ring-cyan-500 outline-none"
-                                    placeholder="john@tlab.com"
+                                    placeholder="john@3vidya.com"
                                 />
                             </div>
                             <div>

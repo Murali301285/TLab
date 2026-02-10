@@ -1,6 +1,9 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { Groq } from 'groq-sdk';
 import { PrismaClient } from '@prisma/client';
+import { jwtVerify } from 'jose';
+
+const JWT_SECRET = new TextEncoder().encode(process.env.JWT_SECRET || 'default-secret-key-change-it');
 
 export async function POST(req: NextRequest) {
     try {
@@ -14,6 +17,25 @@ export async function POST(req: NextRequest) {
 
         const groq = new Groq({ apiKey });
         const prisma = new PrismaClient();
+
+        // 0. Identify User (Optional for logging)
+        let userId = null;
+        let userName = "Guest";
+        try {
+            const token = req.cookies.get('auth-token')?.value;
+            if (token) {
+                const { payload } = await jwtVerify(token, JWT_SECRET);
+                userId = (payload.id || payload.userId) as string;
+
+                // Fetch name for snapshot
+                if (userId) {
+                    const u = await prisma.user.findUnique({ where: { id: userId }, select: { name: true } });
+                    if (u) userName = u.name || "Unknown";
+                }
+            }
+        } catch (e) {
+            console.warn("Token Logging: User identification failed", e);
+        }
 
         // 1. Fetch Context from DB if topicId is provided
         let sourceText = context || "";
@@ -296,6 +318,25 @@ export async function POST(req: NextRequest) {
             });
         }
 
+        // 5. Log Token Usage
+        const estimatedPromptTokens = estimateTokens(JSON.stringify(systemPrompt) + JSON.stringify(userPrompt));
+        const estimatedCompletionTokens = estimateTokens(generatedContent);
+        const totalTokens = estimatedPromptTokens + estimatedCompletionTokens;
+
+        try {
+            await prisma.tokenUsage.create({
+                data: {
+                    userId: userId,
+                    userName: userName,
+                    purpose: type,
+                    tokens: totalTokens,
+                    model: "llama-3.3-70b-versatile"
+                }
+            });
+        } catch (e) {
+            console.error("Token Logging Failed", e);
+        }
+
         // Check if we need to return parsed JSON or string
         if ((type === 'quiz' || type === 'flashcards' || type === 'podcast' || type === 'mindmap') && typeof generatedContent === 'string') {
             try {
@@ -312,6 +353,14 @@ export async function POST(req: NextRequest) {
         return NextResponse.json({ error: 'Failed to generate content' }, { status: 500 });
     }
 }
+
+// --- Helper for Token Counting (Approximate) ---
+function estimateTokens(text: string): number {
+    // Rough estimate: 4 chars per token for English text
+    if (!text) return 0;
+    return Math.ceil(text.length / 4);
+}
+
 
 function generateFallback(type: string, title: string) {
     switch (type) {

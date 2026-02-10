@@ -1,5 +1,5 @@
 {
-  "name": "tlab-learning-platform",
+  "name": "3vidya-learning-platform",
   "version": "0.1.0",
   "private": true,
   "prisma": {
@@ -15,6 +15,7 @@
     "@google/generative-ai": "^0.24.1",
     "@types/dagre": "^0.7.53",
     "@types/marked": "^5.0.2",
+    "@types/recharts": "^1.8.29",
     "@types/three": "^0.182.0",
     "bcryptjs": "^3.0.3",
     "busboy": "^1.6.0",
@@ -30,6 +31,7 @@
     "marked": "^17.0.1",
     "mermaid": "^11.12.1",
     "next": "16.0.6",
+    "nodemailer": "^8.0.1",
     "pdf-parse": "^1.1.1",
     "pdfjs-dist": "^5.4.530",
     "react": "19.2.0",
@@ -40,10 +42,12 @@
     "react-select": "^5.10.2",
     "react-speech-recognition": "^4.0.1",
     "reactflow": "^11.11.4",
+    "recharts": "^3.7.0",
     "regenerator-runtime": "^0.14.1",
     "remark-gfm": "^4.0.1",
     "replicate": "^1.4.0",
     "sharp": "^0.34.5",
+    "sonner": "^2.0.7",
     "tailwind-merge": "^3.4.0",
     "three": "^0.182.0"
   },
@@ -55,6 +59,7 @@
     "@types/busboy": "^1.5.4",
     "@types/canvas-confetti": "^1.9.0",
     "@types/node": "^20",
+    "@types/nodemailer": "^7.0.9",
     "@types/pdf-parse": "^1.1.5",
     "@types/react": "^19",
     "@types/react-dom": "^19",
