@@ -16,6 +16,8 @@ interface Plan {
     name: string;
     userLimit: number;
     tokenLimit: number;
+    tokenLimitMonthly: number;
+    tokenLimitYearly: number;
     storageLimitMB: number;
     singleFileLimitMB: number;
     courseLimit: number;
@@ -27,12 +29,34 @@ interface Plan {
     costPerYear: number;
     currencyId?: string;
     currency?: Currency;
+    coachConfig?: {
+        regionalLimit?: number;
+        internationalLimit?: number;
+        regionalModel?: string;
+        internationalModel?: string;
+    };
 }
+
+const REGIONAL_MODELS = [
+    { id: 'llama3-70b-8192', name: 'Llama 3 70B (Groq) - Recommended' },
+    { id: 'mixtral-8x7b-32768', name: 'Mixtral 8x7b (Groq)' },
+    { id: 'gemma2-9b-it', name: 'Gemma 2 9b (Groq)' }
+];
+
+const INTERNATIONAL_MODELS = [
+    { id: 'llama3-70b-8192', name: 'Llama 3 70B (Groq)' },
+    { id: 'mixtral-8x7b-32768', name: 'Mixtral 8x7b (Groq)' },
+    { id: 'gemma2-9b-it', name: 'Gemma 2 9b (Groq)' }
+];
+
+const REGIONAL_LANGUAGES = ['Tamil', 'Hindi', 'Kannada', 'Telugu', 'Malayalam', 'Marathi', 'Bengali', 'Gujarati'];
+const INTERNATIONAL_LANGUAGES = ['Spanish', 'French', 'German', 'Simplified Chinese', 'Japanese', 'Arabic', 'Russian', 'Portuguese'];
 
 export default function PlanMaster() {
     const [plans, setPlans] = useState<Plan[]>([]);
     const [currencies, setCurrencies] = useState<Currency[]>([]);
     const [loading, setLoading] = useState(true);
+    const [submitting, setSubmitting] = useState(false);
     const [isModalOpen, setIsModalOpen] = useState(false);
     const [editingPlan, setEditingPlan] = useState<Plan | null>(null);
 
@@ -47,7 +71,7 @@ export default function PlanMaster() {
     const fetchPlans = async () => {
         setLoading(true);
         try {
-            const res = await fetch('/api/admin/plans');
+            const res = await fetch('/api/admin/plans', { cache: 'no-store' });
             if (res.ok) {
                 const data = await res.json();
                 setPlans(data);
@@ -75,22 +99,26 @@ export default function PlanMaster() {
         e.preventDefault();
         if (!editingPlan) return;
 
+        setSubmitting(true);
         try {
             // Sanitize payload
             const payload = {
                 lno: formData.lno,
                 // name: formData.name, // Name is unique/fixed usually? If editable, include. Schema says unique.
-                userLimit: formData.userLimit,
-                tokenLimit: formData.tokenLimit,
-                storageLimitMB: formData.storageLimitMB,
-                singleFileLimitMB: formData.singleFileLimitMB,
-                courseLimit: formData.courseLimit,
-                libraryLimit: formData.libraryLimit,
-                policyLimit: formData.policyLimit,
+                userLimit: formData.userLimit || 0,
+                tokenLimit: formData.tokenLimit || 0,
+                tokenLimitMonthly: formData.tokenLimitMonthly || 0,
+                tokenLimitYearly: formData.tokenLimitYearly || 0,
+                storageLimitMB: formData.storageLimitMB || 0,
+                singleFileLimitMB: formData.singleFileLimitMB || 0,
+                courseLimit: formData.courseLimit || 0,
+                libraryLimit: formData.libraryLimit || 0,
+                policyLimit: formData.policyLimit || 0,
                 allowTempUser: formData.allowTempUser,
-                costPerMonth: formData.costPerMonth,
-                costPerYear: formData.costPerYear,
+                costPerMonth: formData.costPerMonth || 0,
+                costPerYear: formData.costPerYear || 0,
                 currencyId: formData.currencyId,
+                coachConfig: formData.coachConfig,
                 isActive: formData.isActive
             };
 
@@ -108,6 +136,8 @@ export default function PlanMaster() {
             fetchPlans();
         } catch (error) {
             toast.error('Update failed');
+        } finally {
+            setSubmitting(false);
         }
     };
 
@@ -115,7 +145,8 @@ export default function PlanMaster() {
         setEditingPlan(plan);
         setFormData({
             ...plan,
-            currencyId: plan.currencyId || (currencies.length > 0 ? currencies[0].id : undefined)
+            currencyId: plan.currencyId || (currencies.length > 0 ? currencies[0].id : undefined),
+            coachConfig: plan.coachConfig || { regionalLimit: 0, internationalLimit: 0, regionalModel: 'llama3-70b-8192', internationalModel: 'llama3-70b-8192' }
         });
         setIsModalOpen(true);
     };
@@ -172,7 +203,30 @@ export default function PlanMaster() {
 
                         <div className="space-y-3">
                             <LimitItem label="Users" value={plan.userLimit} />
-                            <LimitItem label="AI Tokens" value={plan.tokenLimit.toLocaleString()} />
+                            <LimitItem label="Users" value={plan.userLimit} />
+
+                            <div className="flex justify-between items-start text-sm py-1">
+                                <span className="text-slate-500 pt-0.5">Tokens</span>
+                                <div className="text-right">
+                                    {(plan.tokenLimitMonthly > 0 || plan.tokenLimitYearly > 0) ? (
+                                        <div className="flex flex-col items-end gap-0.5">
+                                            {plan.tokenLimitMonthly > 0 && (
+                                                <span className="font-semibold text-slate-900 bg-cyan-50 px-1.5 py-0.5 rounded text-xs">
+                                                    {(plan.tokenLimitMonthly / 1000).toFixed(0)}k/mo
+                                                </span>
+                                            )}
+                                            {plan.tokenLimitYearly > 0 && (
+                                                <span className="font-semibold text-slate-900 bg-amber-50 px-1.5 py-0.5 rounded text-xs">
+                                                    {(plan.tokenLimitYearly / 1000).toFixed(0)}k/year
+                                                </span>
+                                            )}
+                                        </div>
+                                    ) : (
+                                        <span className="font-semibold text-slate-900">{(plan.tokenLimit / 1000).toFixed(0)}k Total</span>
+                                    )}
+                                </div>
+                            </div>
+
                             <LimitItem label="Storage" value={`${plan.storageLimitMB} MB`} />
                             <LimitItem label="Courses" value={plan.courseLimit} />
                             <LimitItem label="Policies" value={plan.policyLimit} />
@@ -186,6 +240,23 @@ export default function PlanMaster() {
                                 ) : (
                                     <X className="h-4 w-4 text-slate-400" />
                                 )}
+                            </div>
+
+                            {/* AI Coach Summary */}
+                            <div className="pt-2 mt-2 border-t border-black/5 text-xs">
+                                <span className="font-bold text-slate-700 block mb-1">Language Coach Limits</span>
+                                <div className="flex justify-between text-slate-500">
+                                    <div className="flex flex-col gap-1">
+                                        <div className="flex justify-between items-center text-slate-500">
+                                            <span>Regional: <span className="font-semibold text-slate-900">{plan.coachConfig?.regionalLimit || 0}</span></span>
+                                            <span className="text-[10px] bg-slate-100 px-1 rounded text-slate-500">{REGIONAL_MODELS.find(m => m.id === plan.coachConfig?.regionalModel)?.name.split(' ')[0] || '-'}</span>
+                                        </div>
+                                        <div className="flex justify-between items-center text-slate-500">
+                                            <span>International: <span className="font-semibold text-slate-900">{plan.coachConfig?.internationalLimit || 0}</span></span>
+                                            <span className="text-[10px] bg-slate-100 px-1 rounded text-slate-500">{INTERNATIONAL_MODELS.find(m => m.id === plan.coachConfig?.internationalModel)?.name.split(' ')[0] || '-'}</span>
+                                        </div>
+                                    </div>
+                                </div>
                             </div>
                         </div>
                     </div>
@@ -251,10 +322,14 @@ export default function PlanMaster() {
                                 <div>
                                     <h4 className="text-sm font-bold text-slate-900 mb-3 flex items-center gap-2">
                                         <span className="w-1 h-4 bg-purple-500 rounded-full"></span>
-                                        Data Limits
+                                        Data Limits (Tokens)
                                     </h4>
                                     <div className="space-y-3">
-                                        <InputGroup label="Token Limit" value={formData.tokenLimit} onChange={v => setFormData({ ...formData, tokenLimit: v })} />
+                                        <div className="grid grid-cols-2 gap-3">
+                                            <InputGroup label="Tokens / Month" value={formData.tokenLimitMonthly} onChange={v => setFormData({ ...formData, tokenLimitMonthly: v })} />
+                                            <InputGroup label="Tokens / Year" value={formData.tokenLimitYearly} onChange={v => setFormData({ ...formData, tokenLimitYearly: v })} />
+                                        </div>
+                                        <div className="border-t border-slate-100 my-2 pt-2"></div>
                                         <InputGroup label="Storage (MB)" value={formData.storageLimitMB} onChange={v => setFormData({ ...formData, storageLimitMB: v })} />
                                         <InputGroup label="Single File (MB)" value={formData.singleFileLimitMB} onChange={v => setFormData({ ...formData, singleFileLimitMB: v })} />
                                     </div>
@@ -272,17 +347,80 @@ export default function PlanMaster() {
                                     </div>
                                 </div>
 
-                                <div className="flex flex-col justify-end">
-                                    <div className="flex items-center gap-2 p-4 bg-slate-50 rounded-lg border border-slate-100">
-                                        <input type="checkbox" checked={formData.isActive} onChange={e => setFormData({ ...formData, isActive: e.target.checked })} className="h-5 w-5 text-cyan-600 rounded" />
-                                        <label className="text-sm font-medium text-slate-700">Is Plan Active?</label>
+                                <div>
+                                    <h4 className="text-sm font-bold text-slate-900 mb-3 flex items-center gap-2">
+                                        <span className="w-1 h-4 bg-pink-500 rounded-full"></span>
+                                        AI Coach Limits
+                                    </h4>
+                                    <div className="space-y-4">
+                                        <div className="grid grid-cols-2 gap-4">
+                                            <InputGroup
+                                                label="Regional Limit"
+                                                value={formData.coachConfig?.regionalLimit}
+                                                onChange={v => setFormData({
+                                                    ...formData,
+                                                    coachConfig: { ...formData.coachConfig, regionalLimit: v }
+                                                })}
+                                            />
+                                            <div className="flex flex-col gap-1">
+                                                <label className="text-xs font-medium text-slate-500 uppercase tracking-wide">Regional Model</label>
+                                                <select
+                                                    value={formData.coachConfig?.regionalModel || ''}
+                                                    onChange={e => setFormData({
+                                                        ...formData,
+                                                        coachConfig: { ...formData.coachConfig, regionalModel: e.target.value }
+                                                    })}
+                                                    className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-cyan-500 outline-none"
+                                                >
+                                                    <option value="">Select Model</option>
+                                                    {REGIONAL_MODELS.map(m => (
+                                                        <option key={m.id} value={m.id}>{m.name}</option>
+                                                    ))}
+                                                </select>
+                                            </div>
+                                        </div>
+                                        <div className="grid grid-cols-2 gap-4">
+                                            <InputGroup
+                                                label="International Limit"
+                                                value={formData.coachConfig?.internationalLimit}
+                                                onChange={v => setFormData({
+                                                    ...formData,
+                                                    coachConfig: { ...formData.coachConfig, internationalLimit: v }
+                                                })}
+                                            />
+                                            <div className="flex flex-col gap-1">
+                                                <label className="text-xs font-medium text-slate-500 uppercase tracking-wide">Intl. Model</label>
+                                                <select
+                                                    value={formData.coachConfig?.internationalModel || ''}
+                                                    onChange={e => setFormData({
+                                                        ...formData,
+                                                        coachConfig: { ...formData.coachConfig, internationalModel: e.target.value }
+                                                    })}
+                                                    className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-cyan-500 outline-none"
+                                                >
+                                                    <option value="">Select Model</option>
+                                                    {INTERNATIONAL_MODELS.map(m => (
+                                                        <option key={m.id} value={m.id}>{m.name}</option>
+                                                    ))}
+                                                </select>
+                                            </div>
+                                        </div>
+                                    </div>
+
+                                    <div className="mt-6 flex flex-col justify-end">
+                                        <div className="flex items-center gap-2 p-4 bg-slate-50 rounded-lg border border-slate-100">
+                                            <input type="checkbox" checked={formData.isActive} onChange={e => setFormData({ ...formData, isActive: e.target.checked })} className="h-5 w-5 text-cyan-600 rounded" />
+                                            <label className="text-sm font-medium text-slate-700">Is Plan Active?</label>
+                                        </div>
                                     </div>
                                 </div>
                             </div>
 
                             <div className="flex justify-end gap-3 mt-6 pt-4 border-t border-slate-100">
-                                <button type="button" onClick={() => setIsModalOpen(false)} className="px-4 py-2 text-slate-600 hover:bg-slate-100 rounded-lg transition">Cancel</button>
-                                <button type="submit" className="px-6 py-2 bg-cyan-600 text-white rounded-lg hover:bg-cyan-700 shadow-sm transition font-medium">Save Changes</button>
+                                <button type="button" onClick={() => setIsModalOpen(false)} className="px-4 py-2 text-slate-600 hover:bg-slate-100 rounded-lg transition" disabled={submitting}>Cancel</button>
+                                <button type="submit" disabled={submitting} className="px-6 py-2 bg-cyan-600 text-white rounded-lg hover:bg-cyan-700 shadow-sm transition font-medium disabled:opacity-50">
+                                    {submitting ? 'Saving...' : 'Save Changes'}
+                                </button>
                             </div>
                         </form>
                     </div>
@@ -307,8 +445,11 @@ function InputGroup({ label, value, onChange }: { label: string, value: any, onC
             <span className="text-xs font-medium text-slate-500 uppercase tracking-wide">{label}</span>
             <input
                 type="number"
-                value={value || 0}
-                onChange={e => onChange(parseInt(e.target.value))}
+                value={value ?? ''}
+                onChange={e => {
+                    const val = parseInt(e.target.value);
+                    onChange(isNaN(val) ? 0 : val);
+                }}
                 className="text-right text-sm font-bold text-slate-900 w-24 outline-none border-none focus:ring-0 p-0"
             />
         </div>

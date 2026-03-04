@@ -3,12 +3,13 @@
 import React, { useState, useRef, useEffect } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
-import { ChevronLeft, Search, Loader2, Info, ArrowRight, Table, MessageSquare, Send, User, Bot, Play, Pause, Mic, LogOut, RotateCcw } from 'lucide-react';
+import { ChevronLeft, Search, Loader2, Info, ArrowRight, Table, MessageSquare, Send, User, UserRound, Bot, Play, Pause, Mic, LogOut, RotateCcw } from 'lucide-react';
 // @ts-ignore
 import MindMap from '@/components/MindMap';
 import { useVoiceInput } from '@/hooks/useVoiceInput';
 import SpeechSpeedControl from '@/components/SpeechSpeedControl';
 import { speakText, VoicePreferences } from '@/utils/voiceUtils';
+import ReactMarkdown from 'react-markdown';
 
 
 interface ChatMessage {
@@ -33,8 +34,17 @@ export default function ConceptPage() {
     const [playbackSpeed, setPlaybackSpeed] = useState(1.0);
     const [speakingLineIdx, setSpeakingLineIdx] = useState<number | null>(null);
     const [micTarget, setMicTarget] = useState<'search' | 'chat'>('chat');
-    const voicePrefs: VoicePreferences = { gender: 'female', accent: 'IN' };
+    const [voicePrefs, setVoicePrefs] = useState<VoicePreferences>({ gender: 'male', accent: 'IN' });
     const lastInputSource = useRef<'text' | 'voice'>('text');
+
+    // Handle dynamic voice switching mid-playback
+    useEffect(() => {
+        if (speakingLineIdx !== null && chatMessages[speakingLineIdx]) {
+            // Replay the current message with the new voice setting
+            speakTextHandler(chatMessages[speakingLineIdx].content, speakingLineIdx);
+        }
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [voicePrefs.gender]); // Only trigger when gender changes
 
     // Load Speed Preference
     useEffect(() => {
@@ -200,7 +210,9 @@ export default function ConceptPage() {
             text,
             voicePrefs,
             () => setSpeakingLineIdx(idx),
-            () => setSpeakingLineIdx(null)
+            () => setSpeakingLineIdx(null),
+            undefined, // Keep en-US or fallback
+            playbackSpeed
         );
     };
 
@@ -439,18 +451,40 @@ export default function ConceptPage() {
                                     </div>
                                 </div>
 
-                                {/* Speed Control */}
-                                <select
-                                    value={playbackSpeed}
-                                    onChange={e => setPlaybackSpeed(parseFloat(e.target.value))}
-                                    className="bg-purple-700 text-white border-none rounded-lg py-1 px-3 text-xs font-bold focus:ring-0 outline-none cursor-pointer"
-                                >
-                                    <option value="0.75">0.75x</option>
-                                    <option value="1">1.0x</option>
-                                    <option value="1.25">1.25x</option>
-                                </select>
+                                <div className="flex items-center gap-3">
+                                    {/* Voice Gender Toggle */}
+                                    <div className="flex bg-purple-700/50 p-1 rounded-full border border-purple-500/30 shadow-inner">
+                                        <button
+                                            onClick={() => setVoicePrefs(prev => ({ ...prev, gender: 'male' }))}
+                                            className={`flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-semibold transition-all duration-200 ${voicePrefs.gender === 'male'
+                                                ? 'bg-white text-purple-700 shadow-sm'
+                                                : 'text-purple-200 hover:text-white hover:bg-purple-600/50'
+                                                }`}
+                                        >
+                                            <User className="h-4 w-4" /> Male
+                                        </button>
+                                        <button
+                                            onClick={() => setVoicePrefs(prev => ({ ...prev, gender: 'female' }))}
+                                            className={`flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-semibold transition-all duration-200 ${voicePrefs.gender === 'female'
+                                                ? 'bg-white text-purple-700 shadow-sm'
+                                                : 'text-purple-200 hover:text-white hover:bg-purple-600/50'
+                                                }`}
+                                        >
+                                            <UserRound className="h-4 w-4" /> Female
+                                        </button>
+                                    </div>
 
-
+                                    {/* Speed Control */}
+                                    <select
+                                        value={playbackSpeed}
+                                        onChange={e => setPlaybackSpeed(parseFloat(e.target.value))}
+                                        className="bg-purple-700 text-white border-none rounded-lg py-1 px-3 text-xs font-bold focus:ring-0 outline-none cursor-pointer"
+                                    >
+                                        <option value="0.75">0.75x</option>
+                                        <option value="1">1.0x</option>
+                                        <option value="1.25">1.25x</option>
+                                    </select>
+                                </div>
                             </div>
 
                             <div className="flex-1 overflow-y-auto p-4 md:p-6 bg-slate-50 space-y-6">
@@ -471,7 +505,11 @@ export default function ConceptPage() {
                                                 ? 'bg-purple-600 text-white rounded-tr-sm'
                                                 : 'bg-white text-slate-700 border border-slate-100 rounded-tl-sm'
                                                 }`}>
-                                                {msg.content}
+                                                <div className={`leading-relaxed [&>p]:mb-3 last:[&>p]:mb-0 [&>strong]:font-bold [&>ul]:list-disc [&>ul]:pl-5 [&>ol]:list-decimal ${msg.role === 'user' ? 'text-white' : 'text-slate-700'}`}>
+                                                    <ReactMarkdown>
+                                                        {msg.content}
+                                                    </ReactMarkdown>
+                                                </div>
                                             </div>
 
                                             {/* Play Button */}
@@ -545,8 +583,9 @@ export default function ConceptPage() {
                         </div>
 
                     </div>
-                )}
-            </main>
-        </div>
+                )
+                }
+            </main >
+        </div >
     );
 }

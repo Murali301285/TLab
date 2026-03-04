@@ -4,7 +4,7 @@ import { useState, useEffect, useRef } from 'react';
 import {
     Search, Plus, Pencil, Trash2, X, Loader2, Save,
     AlertCircle, CheckCircle, Image as ImageIcon, Upload,
-    ChevronLeft, ChevronRight, Filter, Award, XCircle, Grid, Palette, Shuffle
+    ChevronLeft, ChevronRight, Filter, Award, XCircle, Grid, Palette, Shuffle, Eye
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import Image from 'next/image';
@@ -29,6 +29,7 @@ export default function CertificateMaster() {
     const [isModalOpen, setIsModalOpen] = useState(false);
     const [editingCert, setEditingCert] = useState<Certificate | null>(null);
     const [isSubmitting, setIsSubmitting] = useState(false);
+    const [previewImage, setPreviewImage] = useState<string | null>(null);
 
     // Pagination & Sort State
     const [sortOption, setSortOption] = useState('newest');
@@ -55,6 +56,7 @@ export default function CertificateMaster() {
     const [designFooter, setDesignFooter] = useState('Awarded By 3Vidya');
     const [borderWidth, setBorderWidth] = useState(4);
     const [borderPadding, setBorderPadding] = useState(20);
+    const [showNamePlaceholder, setShowNamePlaceholder] = useState(false);
     const canvasRef = useRef<HTMLCanvasElement>(null);
 
     const fetchCertificates = async () => {
@@ -76,71 +78,93 @@ export default function CertificateMaster() {
         fetchCertificates();
     }, []);
 
+    // Draw Canvas Function
+    const drawCanvas = (ctx: CanvasRenderingContext2D, width: number, height: number, includeName: boolean) => {
+        // Clear
+        ctx.clearRect(0, 0, width, height);
+
+        // Background (Solid)
+        ctx.fillStyle = designBgColor;
+        ctx.fillRect(0, 0, width, height);
+
+        // Border (inside)
+        ctx.strokeStyle = designTextColor;
+        ctx.lineWidth = borderWidth;
+        ctx.strokeRect(borderPadding, borderPadding, width - (borderPadding * 2), height - (borderPadding * 2));
+
+        // Text Setup
+        ctx.textAlign = 'center';
+        ctx.fillStyle = designTextColor;
+
+        // Title
+        ctx.font = 'bold 36px serif';
+        ctx.fillText(designTitle.toUpperCase(), width / 2, 80);
+
+        // Subtitle
+        ctx.font = 'italic 18px sans-serif';
+        ctx.fillText('This is to certify that', width / 2, 130);
+
+        // Name Placeholder (Dynamic)
+        if (includeName) {
+            ctx.font = 'bold 48px serif';
+            const userName = user?.name || 'Candidate Name';
+            ctx.fillText(userName, width / 2, 200);
+
+            // Underline Name
+            ctx.lineWidth = 2;
+            ctx.beginPath();
+            ctx.moveTo(width / 2 - 150, 210);
+            ctx.lineTo(width / 2 + 150, 210);
+            ctx.stroke();
+        } else {
+            // Draw a subtle placeholder line to indicate where the name goes (optional, for UI feedback)
+            // Or just leave it blank as requested for the final output
+            if (!isSubmitting) {
+                // Placeholder removed as per request
+                // ctx.strokeStyle = designTextColor + '40'; // Low opacity
+                // ctx.lineWidth = 1;
+                // ctx.beginPath();
+                // ctx.moveTo(width / 2 - 100, 210);
+                // ctx.lineTo(width / 2 + 100, 210);
+                // ctx.stroke();
+                // ctx.fillStyle = designTextColor + '40';
+                // ctx.font = 'italic 14px sans-serif';
+                // ctx.fillText('(Candidate Name will appear here)', width / 2, 200);
+            }
+        }
+
+        // Completion Text
+        ctx.fillStyle = designTextColor; // Reset fill style
+        ctx.font = '16px sans-serif';
+        ctx.fillText('has successfully completed the course', width / 2, 250);
+
+        // Course Placeholder
+        ctx.font = 'bold 24px serif';
+        ctx.fillText('Course Title Here', width / 2, 290);
+
+        // Date Placeholder
+        const date = new Date();
+        const day = date.getDate().toString().padStart(2, '0');
+        const month = (date.getMonth() + 1).toString().padStart(2, '0');
+        const year = date.getFullYear();
+        const dateStr = `${day}/${month}/${year}`;
+        ctx.font = '14px sans-serif';
+        ctx.fillText(`Completed on: ${dateStr}`, width / 2, 330);
+
+        // Footer
+        ctx.font = 'bold 16px sans-serif';
+        ctx.fillText(designFooter, width / 2, 380);
+    };
+
     // Draw Canvas Preview whenever design changes
     useEffect(() => {
         if (mode === 'design' && isModalOpen && canvasRef.current) {
             const canvas = canvasRef.current;
             const ctx = canvas.getContext('2d');
             if (!ctx) return;
-
-            // Clear
-            ctx.clearRect(0, 0, canvas.width, canvas.height);
-
-            // Background (Solid)
-            ctx.fillStyle = designBgColor;
-            ctx.fillRect(0, 0, canvas.width, canvas.height);
-
-            // Border (inside)
-            ctx.strokeStyle = designTextColor;
-            ctx.lineWidth = borderWidth;
-            ctx.strokeRect(borderPadding, borderPadding, canvas.width - (borderPadding * 2), canvas.height - (borderPadding * 2));
-
-            // Text Setup
-            ctx.textAlign = 'center';
-            ctx.fillStyle = designTextColor;
-
-            // Title
-            ctx.font = 'bold 36px serif';
-            ctx.fillText(designTitle.toUpperCase(), canvas.width / 2, 80);
-
-            // Subtitle
-            ctx.font = 'italic 18px sans-serif';
-            ctx.fillText('This is to certify that', canvas.width / 2, 130);
-
-            // Name Placeholder (Dynamic)
-            ctx.font = 'bold 48px serif';
-            const userName = user?.name || 'Candidate Name';
-            ctx.fillText(userName, canvas.width / 2, 200);
-
-            // Underline Name
-            ctx.lineWidth = 2;
-            ctx.beginPath();
-            ctx.moveTo(canvas.width / 2 - 150, 210);
-            ctx.lineTo(canvas.width / 2 + 150, 210);
-            ctx.stroke();
-
-            // Completion Text
-            ctx.font = '16px sans-serif';
-            ctx.fillText('has successfully completed the course', canvas.width / 2, 250);
-
-            // Course Placeholder
-            ctx.font = 'bold 24px serif';
-            ctx.fillText('Course Title Here', canvas.width / 2, 290);
-
-            // Date Placeholder
-            const date = new Date();
-            const day = date.getDate().toString().padStart(2, '0');
-            const month = (date.getMonth() + 1).toString().padStart(2, '0');
-            const year = date.getFullYear();
-            const dateStr = `${day}/${month}/${year}`;
-            ctx.font = '14px sans-serif';
-            ctx.fillText(`Completed on: ${dateStr}`, canvas.width / 2, 330);
-
-            // Footer
-            ctx.font = 'bold 16px sans-serif';
-            ctx.fillText(designFooter, canvas.width / 2, 380);
+            drawCanvas(ctx, canvas.width, canvas.height, showNamePlaceholder);
         }
-    }, [mode, isModalOpen, designBgColor, designTextColor, designTitle, designFooter, borderWidth, borderPadding, user]);
+    }, [mode, isModalOpen, designBgColor, designTextColor, designTitle, designFooter, borderWidth, borderPadding, user, showNamePlaceholder]);
 
     // Curated Palette for Randomization
     const handleRandomizeDesign = () => {
@@ -272,6 +296,18 @@ export default function CertificateMaster() {
 
             // If in Design Mode, generate the image from canvas
             if (mode === 'design') {
+                // FORCE: Redraw canvas WITHOUT any name before saving
+                if (canvasRef.current) {
+                    const ctx = canvasRef.current.getContext('2d');
+                    if (ctx) {
+                        // Pass explicit false to exclude any name or placeholder text
+                        drawCanvas(ctx, canvasRef.current.width, canvasRef.current.height, false);
+                    }
+                }
+
+                // Allow a tiny delay for canvas paint (though synchronous, sometimes buffering helps)
+                await new Promise(r => setTimeout(r, 50));
+
                 const generatedFile = await handleGenerateImage();
                 if (generatedFile) {
                     fileToUpload = generatedFile;
@@ -467,6 +503,13 @@ export default function CertificateMaster() {
                                         <td className="px-6 py-4 text-right">
                                             <div className="flex items-center justify-end gap-2">
                                                 <button
+                                                    onClick={() => setPreviewImage(cert.bannerImage)}
+                                                    className="p-1.5 text-slate-400 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition-colors"
+                                                    title="Preview Format"
+                                                >
+                                                    <Eye className="h-4 w-4" />
+                                                </button>
+                                                <button
                                                     onClick={() => handleEdit(cert)}
                                                     className="p-1.5 text-slate-400 hover:text-cyan-600 hover:bg-cyan-50 rounded-lg transition-colors"
                                                     title="Edit"
@@ -514,6 +557,32 @@ export default function CertificateMaster() {
                     </div>
                 )}
             </div>
+
+            {/* Preview Modal */}
+            {previewImage && (
+                <div className="fixed inset-0 bg-black/80 z-50 flex items-center justify-center p-4 backdrop-blur-sm animate-in fade-in duration-200" onClick={() => setPreviewImage(null)}>
+                    <div className="relative max-w-4xl w-full bg-slate-900 rounded-xl overflow-hidden shadow-2xl animate-in zoom-in-95 duration-200" onClick={e => e.stopPropagation()}>
+                        <button
+                            onClick={() => setPreviewImage(null)}
+                            className="absolute top-4 right-4 bg-black/50 hover:bg-black/70 text-white p-2 rounded-full transition-colors z-10"
+                        >
+                            <X className="h-5 w-5" />
+                        </button>
+                        <div className="relative w-full aspect-[3/2] bg-slate-900 flex items-center justify-center">
+                            {previewImage ? (
+                                <Image
+                                    src={previewImage}
+                                    alt="Certificate Preview"
+                                    fill
+                                    className="object-contain"
+                                />
+                            ) : (
+                                <div className="text-slate-500">No preview available</div>
+                            )}
+                        </div>
+                    </div>
+                </div>
+            )}
 
             {/* Modal */}
             {isModalOpen && (
@@ -664,6 +733,18 @@ export default function CertificateMaster() {
                                                     onChange={(e) => setDesignFooter(e.target.value)}
                                                     className="w-full px-2 py-1.5 text-sm border border-slate-200 rounded"
                                                 />
+                                            </div>
+
+                                            <div className="flex items-center mt-6">
+                                                <label className="flex items-center gap-2 cursor-pointer">
+                                                    <input
+                                                        type="checkbox"
+                                                        checked={showNamePlaceholder}
+                                                        onChange={(e) => setShowNamePlaceholder(e.target.checked)}
+                                                        className="h-4 w-4 text-cyan-600 rounded focus:ring-cyan-500 border-slate-300"
+                                                    />
+                                                    <span className="text-xs font-medium text-slate-700">Show Name Placeholder (Preview)</span>
+                                                </label>
                                             </div>
                                         </div>
 

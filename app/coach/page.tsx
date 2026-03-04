@@ -42,8 +42,9 @@ export default function CoachPage() {
             </div>
 
             {/* Coach Selection Cards */}
-            <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 -mt-10 relative z-20">
-                <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
+            <div className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 -mt-10 relative z-20">
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
+                    {/* Language Coach - Hidden for now
                     <Link href="/coach/language" className="group">
                         <div className="bg-white rounded-2xl p-8 shadow-lg hover:shadow-xl transition-all border border-slate-100 h-full flex flex-col items-center text-center relative overflow-hidden group-hover:-translate-y-1">
                             <div className="h-20 w-20 bg-blue-50 text-blue-600 rounded-full flex items-center justify-center mb-6 group-hover:scale-110 transition-transform">
@@ -58,6 +59,7 @@ export default function CoachPage() {
                             </span>
                         </div>
                     </Link>
+                    */}
 
                     {/* Concept Coach */}
                     <Link href="/coach/concept" className="group">

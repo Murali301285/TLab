@@ -20,6 +20,8 @@ model Plan {
   // Limits
   userLimit          Int      @default(10)
   tokenLimit         Int      @default(100000)
+  tokenLimitMonthly  Int      @default(0)
+  tokenLimitYearly   Int      @default(0)
   storageLimitMB     Int      @default(100) // Overall Content Size
   singleFileLimitMB  Int      @default(25)
   courseLimit        Int      @default(5)
@@ -34,6 +36,8 @@ model Plan {
   
   costPerMonth       Float    @default(0.0)
   costPerYear        Float    @default(0.0)
+  
+  coachConfig        Json?    // { regional: [], international: [] }
   
   isActive           Boolean  @default(true)
   
@@ -63,6 +67,7 @@ model Company {
   
   address       String?
   contactPerson String?
+  contactPhone  String?
   
   // Licensing & Validity
   licenseActiveOn DateTime?
@@ -126,6 +131,19 @@ model User {
 
   coachSessions  CoachSession[]
   mentorBookings MentorBooking[]
+  // Temp User Logic
+  isTempUser Boolean @default(false)
+  validity   DateTime?
+  lastLogin  DateTime?
+
+  // Contact Info
+  contactNumber String?
+  contactEmail  String?
+
+  // Reporting Structure
+  managers     User[] @relation("UserReporting")
+  subordinates User[] @relation("UserReporting")
+
   TokenUsage     TokenUsage[]
 }
 

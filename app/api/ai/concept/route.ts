@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { Groq } from 'groq-sdk';
+import { getGroqKeyForUser } from '@/lib/ai-config';
 
 export async function POST(req: NextRequest) {
   try {
@@ -7,7 +8,7 @@ export async function POST(req: NextRequest) {
     const { topic, topicTitle } = body;
     const conceptTopic = topic || topicTitle;
 
-    const apiKey = process.env.GROQ_API_KEY;
+    const { apiKey } = await getGroqKeyForUser(req);
     if (!apiKey) {
       return NextResponse.json({ error: "Missing API Key" }, { status: 500 });
     }
@@ -35,11 +36,11 @@ export async function POST(req: NextRequest) {
         }
         
         Rules:
-        1. Mermaid Flowchart: Use 'graph LR'.
-        2. STRICTLY use standard arrows: A --> B or A -->|Label| B.
-        3. NEVER use arrows like -->|Label|> or --> > or other variants.
-        4. Node labels must be simple text. Remove special characters. "Node Name"
-        5. Return raw JSON only.
+        1. Mermaid Flowchart: ALWAYS start with 'graph LR'.
+        2. STRICTLY use alphanumeric IDs for nodes (e.g., A, B, C1). NEVER use spaces in node IDs.
+        3. ALWAYS wrap node text labels in brackets: A[Data Source] --> B[Processing]
+        4. For edge labels, use EXACTLY: A -->|Label Text| B. NEVER add an arrowhead AFTER the label. DO NOT use -->|Label|>
+        5. NEVER use unescaped quotes or special characters inside the text brackets.
         `;
 
     const userPrompt = `Explain this concept visually: "${conceptTopic}"`;
@@ -57,6 +58,14 @@ export async function POST(req: NextRequest) {
 
     const textResponse = completion.choices[0]?.message?.content || "{}";
     const data = JSON.parse(textResponse);
+
+    // Force-sanitize Mermaid syntax if the model stubbornly hallucinates invalid arrows
+    if (data && typeof data.mermaid === 'string') {
+      // Replaces "-->|Some Text|>" with "-->|Some Text|" avoiding extra spaces
+      data.mermaid = data.mermaid.replace(/-->\|([^|]+)\|>/g, '-->|$1|');
+      // Also catch "---|Some Text|>" just in case
+      data.mermaid = data.mermaid.replace(/---\|([^|]+)\|>/g, '---|$1|');
+    }
 
     return NextResponse.json({ content: data });
 

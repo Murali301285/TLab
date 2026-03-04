@@ -67,6 +67,17 @@ export default function ProfileDropdown() {
                                 Access Admin Panel
                             </Link>
                         )}
+
+                        {/* Manage Team Link for Managers/HR/Admins */}
+                        {['SUPER_ADMIN', 'COMPANY_ADMIN', 'HR', 'MANAGER', 'CONTENT_MANAGER'].includes(user.role) && (
+                            <Link
+                                href="/admin/users?view=team"
+                                className="block mt-1 text-xs font-bold text-sky-500 hover:text-sky-600"
+                                onClick={() => setIsOpen(false)}
+                            >
+                                Manage Team Members
+                            </Link>
+                        )}
                     </div>
 
                     <div className="py-1">
@@ -77,14 +88,6 @@ export default function ProfileDropdown() {
                         >
                             <UserCircle className="h-4 w-4" />
                             My Profile
-                        </Link>
-                        <Link
-                            href="/settings"
-                            className="flex items-center gap-2 px-4 py-2 text-sm text-slate-600 hover:bg-slate-50 hover:text-cyan-600 transition-colors"
-                            onClick={() => setIsOpen(false)}
-                        >
-                            <Settings className="h-4 w-4" />
-                            Settings
                         </Link>
                     </div>
 

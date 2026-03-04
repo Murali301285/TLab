@@ -11,23 +11,12 @@ interface DashboardLoaderProps {
 }
 
 export default function DashboardLoader({ onFinish, isLoading = false, message = "Your data is loading..." }: DashboardLoaderProps) {
-    const [minTimeElapsed, setMinTimeElapsed] = useState(false);
-
     useEffect(() => {
-        // Set minimum display time to 2 seconds
-        const timer = setTimeout(() => {
-            setMinTimeElapsed(true);
-        }, 2000);
-
-        return () => clearTimeout(timer);
-    }, []);
-
-    useEffect(() => {
-        // Only finish when BOTH minimum time has passed AND actual loading is done
-        if (minTimeElapsed && !isLoading) {
+        // Immediately finish if not loading
+        if (!isLoading) {
             if (onFinish) onFinish();
         }
-    }, [minTimeElapsed, isLoading, onFinish]);
+    }, [isLoading, onFinish]);
 
     return (
         <div className="fixed inset-0 z-[100] flex flex-col items-center justify-center bg-slate-900/60 backdrop-blur-md transition-opacity duration-500">

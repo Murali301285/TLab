@@ -153,7 +153,9 @@ export default function ProfilePage() {
                                 </div>
                                 <div className="flex justify-between items-center text-sm">
                                     <span className="text-slate-500">Last Login</span>
-                                    <span className="font-medium text-slate-900">Today, 10:42 AM</span>
+                                    <span className="font-medium text-slate-900">
+                                        {user.lastLogin ? new Date(user.lastLogin).toLocaleString() : 'Never'}
+                                    </span>
                                 </div>
                                 <div className="flex justify-between items-center text-sm">
                                     <span className="text-slate-500">Status</span>

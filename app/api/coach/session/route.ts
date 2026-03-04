@@ -26,11 +26,37 @@ export async function POST(req: NextRequest) {
             }
         }
 
+        // Fetch User's Plan via Company
+        const userWithPlan = await prisma.user.findUnique({
+            where: { id: validUserId },
+            include: {
+                company: {
+                    include: { plan: true }
+                }
+            }
+        });
+
+        // Determine Model based on Category and Plan Config
+        let selectedModel = null;
+        if (config && config.category && userWithPlan?.company?.plan?.coachConfig) {
+            const planConfig = userWithPlan.company.plan.coachConfig as any;
+            if (config.category === 'Regional') {
+                selectedModel = planConfig.regionalModel;
+            } else {
+                selectedModel = planConfig.internationalModel;
+            }
+        }
+
+        const finalConfig = {
+            ...config,
+            model: selectedModel // Inject the model from Plan
+        };
+
         const session = await prisma.coachSession.create({
             data: {
                 userId: validUserId,
                 mode,
-                config: config || {},
+                config: finalConfig || {},
                 startTime: new Date(),
             }
         });

@@ -1,29 +1,75 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
 import bcrypt from 'bcryptjs';
+import { encrypt, decrypt } from '@/lib/crypto'; // Import crypto
 
 export async function GET(req: NextRequest) {
     try {
         const companies = await prisma.company.findMany({
             include: {
-                plan: { select: { name: true } },
-                users: {
-                    where: { role: 'COMPANY_ADMIN' },
-                    select: { id: true, email: true, isActive: true },
-                    take: 1
+                plan: true,
+                _count: {
+                    select: { users: true }
                 }
             },
             orderBy: { createdAt: 'desc' }
         });
 
-        // Transform for UI
-        const formatted = companies.map(c => ({
-            ...c,
-            adminUser: c.users[0] || null
+        // Parallel fetch for detailed stats
+        const formatted = await Promise.all(companies.map(async (c) => {
+            // Courses, Library, Policy counts
+            const courseStats = await prisma.course.groupBy({
+                by: ['type', 'isCompliance'],
+                where: { companyId: c.id },
+                _count: true
+            });
+
+            let coursesCount = 0;
+            let libraryCount = 0;
+            let policyCount = 0;
+
+            courseStats.forEach(stat => {
+                if (stat.type === 'COURSE') coursesCount += stat._count;
+                if (stat.type === 'LIBRARY') libraryCount += stat._count;
+                if (stat.isCompliance) policyCount += stat._count; // Assuming Policy = Compliance Docs
+            });
+
+            // Token Usage (Aggregate from Users)
+            const tokenStat = await prisma.tokenUsage.aggregate({
+                _sum: { tokens: true },
+                where: { user: { companyId: c.id } }
+            });
+
+            // Admin User (Single)
+            const adminUser = await prisma.user.findFirst({
+                where: { companyId: c.id, role: 'COMPANY_ADMIN' },
+                select: { id: true, email: true, isActive: true }
+            });
+
+            // Decrypt API Key if present
+            let apiConfig = c.apiConfig as any;
+            if (apiConfig && apiConfig.groqKey) {
+                apiConfig = { ...apiConfig, groqKey: decrypt(apiConfig.groqKey) };
+            }
+
+            return {
+                ...c,
+                apiConfig, // Return decrypted config
+                adminUser: adminUser || null,
+                stats: {
+                    users: c._count.users,
+                    courses: coursesCount,
+                    library: libraryCount,
+                    policy: policyCount,
+                    tokens: tokenStat._sum.tokens || 0,
+                    storageUsed: 0, // Placeholder, implementation needed for file size tracking
+                }
+            };
         }));
 
         return NextResponse.json(formatted);
     } catch (error) {
+        console.error('Company Fetch Error:', error);
         return NextResponse.json({ error: 'Failed to fetch companies' }, { status: 500 });
     }
 }
@@ -32,7 +78,7 @@ export async function POST(req: NextRequest) {
     try {
         const body = await req.json();
         const {
-            name, shortName, address, contactPerson, isActive, planId, licenseExpiresAt,
+            name, shortName, address, contactPerson, contactPhone, isActive, planId, licenseExpiresAt,
             adminEmail, adminPassword, groqKey
         } = body;
 
@@ -48,10 +94,11 @@ export async function POST(req: NextRequest) {
                     shortName,
                     address,
                     contactPerson,
+                    contactPhone,
                     isActive,
                     planId: planId || null,
                     licenseExpiresAt: licenseExpiresAt ? new Date(licenseExpiresAt) : null,
-                    apiConfig: groqKey ? { groqKey } : undefined
+                    apiConfig: groqKey ? { groqKey: encrypt(groqKey) } : undefined
                 }
             });
 
@@ -89,28 +136,24 @@ export async function PUT(req: NextRequest) {
 
         const body = await req.json();
         const {
-            name, shortName, address, contactPerson, isActive, planId, licenseExpiresAt,
+            name, shortName, address, contactPerson, contactPhone, isActive, planId, licenseExpiresAt,
             adminEmail, adminPassword, adminIsActive, resetPassword, groqKey
         } = body;
 
         // Transaction
         const result = await prisma.$transaction(async (tx) => {
-            // Update Company
-            const company = await tx.company.update({
+            // Update Company - RENAMED VARIABLE
+            const updatedCompany = await tx.company.update({
                 where: { id },
                 data: {
-                    name, shortName, address, contactPerson, isActive,
+                    name, shortName, address, contactPerson, contactPhone, isActive,
                     planId: planId || null,
                     licenseExpiresAt: licenseExpiresAt ? new Date(licenseExpiresAt) : null,
-                    apiConfig: groqKey ? { groqKey } : undefined, // overwrite entire json or merge? Using simple overwrite for now 
+                    apiConfig: groqKey ? { groqKey: encrypt(groqKey) } : undefined,
                 }
             });
 
             // Update Admin User if linked
-            // We need to find the admin user for this company. 
-            // Assumption: Only one COMPANY_ADMIN or we target by email? 
-            // Let's target by finding the COMPANY_ADMIN linked to this company.
-
             const adminUser = await tx.user.findFirst({
                 where: { companyId: id, role: 'COMPANY_ADMIN' }
             });
@@ -137,13 +180,13 @@ export async function PUT(req: NextRequest) {
                         password: hashedPassword,
                         name: 'Company Admin',
                         role: 'COMPANY_ADMIN',
-                        companyId: company.id,
+                        companyId: updatedCompany.id,
                         isActive: true
                     }
                 });
             }
 
-            return company;
+            return updatedCompany;
         });
 
         return NextResponse.json(result);

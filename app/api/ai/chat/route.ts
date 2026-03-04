@@ -1,12 +1,13 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { Groq } from 'groq-sdk';
+import { getGroqKeyForUser } from '@/lib/ai-config';
 
 export async function POST(req: NextRequest) {
     try {
         const body = await req.json();
         const { messages, context } = body;
 
-        const apiKey = process.env.GROQ_API_KEY;
+        const { apiKey } = await getGroqKeyForUser(req);
         if (!apiKey) {
             return NextResponse.json({ reply: "AI Service Unavailable (Missing Key)" });
         }
@@ -21,10 +22,15 @@ export async function POST(req: NextRequest) {
 
         RULES:
         1. Answer ONLY questions related to the provided CONTEXT.
-        2. If the user asks about general knowledge, other topics, or anything not in the context (e.g., "What is the capital of France?", "Write me a poem about cats"), you MUST refuse.
+        2. If the user asks about general knowledge, other topics, or anything not in the context, you MUST refuse.
         3. Refusal Message: "I can only answer questions related to this specific topic." (You may vary this slightly to be polite, but stay firm).
         4. Do not hallucinate information not present in the context.
         5. Be concise, clear, and encouraging.
+        
+        FORMATTING RULES (CRITICAL):
+        - Frame your response using proper Markdown headings (e.g., "**Heading:**").
+        - Put clear blank line spaces between separate paragraphs, lists, and concepts.
+        - NEVER use any emojis under any circumstances. Keep the tone professional.
         
         Your goal is to help the student understand THIS specific lesson, nothing else.`;
 

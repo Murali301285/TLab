@@ -3,12 +3,12 @@
 import { useState, useEffect } from 'react';
 import Image from 'next/image';
 import Link from 'next/link';
-import { Search, Bell, BookOpen, Clock, Award, ArrowRight, Bot, Users, FileText, Settings, UserCog, ShieldCheck } from 'lucide-react';
-import ProfileDropdown from '@/components/ProfileDropdown';
+import { BookOpen, Clock, Award, ArrowRight, Bot, Users, FileText, Settings, UserCog, ShieldCheck } from 'lucide-react';
+import MainHeader from '@/components/MainHeader';
 import { useAuth } from '@/components/AuthProvider';
 import PageLoader from '@/components/PageLoader';
 import DashboardLoader from '@/components/DashboardLoader';
-import { getMyCourses, getRecentLearning, getComplianceCourses } from '@/app/actions/courses';
+import { getDashboardData } from '@/app/actions/courses';
 
 import { motion, AnimatePresence, Variants } from 'framer-motion';
 import SuperAdminStats from '@/components/admin/SuperAdminStats';
@@ -35,27 +35,39 @@ export default function Dashboard() {
         async function loadCourses() {
             if (!user?.id) return;
 
-            setDataLoading(true);
-            try {
-                const [myCoursesRes, recentRes, complianceRes] = await Promise.all([
-                    getMyCourses(user.id),
-                    getRecentLearning(user.id),
-                    getComplianceCourses(user.id)
-                ]);
+            // Attempt to load from cache first for instant gratification
+            const cacheKey = `dashboardData_${user.id}`;
+            const cachedData = sessionStorage.getItem(cacheKey);
 
-                if (myCoursesRes.success) {
-                    setCourses(myCoursesRes.data || []);
+            if (cachedData) {
+                try {
+                    const parsed = JSON.parse(cachedData);
+                    setCourses(parsed.myCourses || []);
+                    setRecentCourses(parsed.recentCourses || []);
+                    setComplianceDocs(parsed.complianceDocs || []);
+                    setDataLoading(false); // Stop loader immediately
+                } catch (e) {
+                    console.error("Failed to parse cached dashboard data", e);
                 }
-                if (recentRes.success) {
-                    setRecentCourses(recentRes.data || []);
-                }
-                if (complianceRes.success) {
-                    setComplianceDocs(complianceRes.data || []);
+            } else {
+                setDataLoading(true); // Only show loader if no cache
+            }
+
+            try {
+                const isAdminUser = user.role === 'admin' || user.role === 'SUPER_ADMIN' || user.role === 'COMPANY_ADMIN';
+                const dashboardDataRes = await getDashboardData(user.id, isAdminUser);
+
+                if (dashboardDataRes.success && dashboardDataRes.data) {
+                    setCourses(dashboardDataRes.data.myCourses || []);
+                    setRecentCourses(dashboardDataRes.data.recentCourses || []);
+                    setComplianceDocs(dashboardDataRes.data.complianceDocs || []);
+                    // Update cache silently in background
+                    sessionStorage.setItem(cacheKey, JSON.stringify(dashboardDataRes.data));
                 }
             } catch (e) {
                 console.error(e);
             } finally {
-                setDataLoading(false);
+                setDataLoading(false); // Ensure loader is off
             }
         }
 
@@ -75,6 +87,9 @@ export default function Dashboard() {
     // Removed early return for loader to allow background rendering
 
     const isAdmin = user?.role === 'admin' || user?.role === 'SUPER_ADMIN' || user?.role === 'COMPANY_ADMIN';
+    const isSuperAdmin = user?.role === 'SUPER_ADMIN' || user?.role === 'admin';
+    const isCompanyAdmin = user?.role === 'COMPANY_ADMIN';
+    const isContentManager = user?.role === 'CONTENT_MANAGER';
 
     const completedCount = courses.filter(c => c.completedAt).length;
     const totalSeconds = courses.reduce((acc, c) => acc + (c.totalTime || 0), 0);
@@ -144,31 +159,7 @@ export default function Dashboard() {
             </AnimatePresence>
 
             {/* Top Navigation */}
-            <nav className="sticky top-0 z-50 bg-slate-900 border-b border-white/10 shadow-md">
-                <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-                    <div className="flex items-center justify-between h-16">
-                        <div className="flex items-center gap-4">
-                            <div className="relative w-48 h-12">
-                                <Image src="/assets/logo.png" alt="3Vidya Logo" fill className="object-contain" />
-                            </div>
-                            <span className="hidden md:inline-block text-lg font-bold bg-clip-text text-transparent bg-gradient-to-r from-cyan-400 to-blue-500 border-l border-slate-700 pl-4 ml-2">
-                                A Learning, Training & Compliance Platform
-                            </span>
-                        </div>
-
-                        <div className="flex items-center gap-4">
-                            <button className="p-2 text-slate-400 hover:text-white transition-colors">
-                                <Search className="h-5 w-5" />
-                            </button>
-                            <button className="p-2 text-slate-400 hover:text-white transition-colors relative">
-                                <Bell className="h-5 w-5" />
-                                <span className="absolute top-1.5 right-1.5 w-2 h-2 bg-red-500 rounded-full animate-pulse" />
-                            </button>
-                            <ProfileDropdown />
-                        </div>
-                    </div>
-                </div>
-            </nav>
+            <MainHeader />
 
             {/* Hero Header */}
             <div className="pt-8">
@@ -314,52 +305,58 @@ export default function Dashboard() {
                     </div>
 
                     {/* Admin Features */}
-                    {isAdmin && (
+                    {(isSuperAdmin || isCompanyAdmin || isContentManager) && (
                         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 mb-6">
-                            <Link href="/admin/upload" className="group">
-                                <motion.div variants={itemVariants} whileHover={{ y: -5 }} className="glass-card p-6 rounded-xl border border-slate-200 hover:border-blue-300 hover:shadow-lg transition-all h-full bg-white flex flex-col items-center text-center">
-                                    <div className="p-3 bg-blue-50 rounded-lg mb-4 group-hover:bg-blue-100 transition-colors">
-                                        <FileText className="h-8 w-8 text-blue-600" />
-                                    </div>
-                                    <h3 className="text-xl font-bold text-slate-900 group-hover:text-blue-600 mb-2">Content Management</h3>
-                                    <p className="text-sm text-slate-500 mb-4 flex-1">
-                                        Upload new content, extract chapters, and generate AI study aids.
-                                    </p>
-                                    <span className="text-blue-600 font-semibold text-sm flex items-center gap-1 group-hover:translate-x-1 transition-transform">
-                                        Manage Content <ArrowRight className="h-4 w-4" />
-                                    </span>
-                                </motion.div>
-                            </Link>
+                            {(isSuperAdmin || isCompanyAdmin || isContentManager) && (
+                                <Link href="/admin/upload" className="group">
+                                    <motion.div variants={itemVariants} whileHover={{ y: -5 }} className="glass-card p-6 rounded-xl border border-slate-200 hover:border-blue-300 hover:shadow-lg transition-all h-full bg-white flex flex-col items-center text-center">
+                                        <div className="p-3 bg-blue-50 rounded-lg mb-4 group-hover:bg-blue-100 transition-colors">
+                                            <FileText className="h-8 w-8 text-blue-600" />
+                                        </div>
+                                        <h3 className="text-xl font-bold text-slate-900 group-hover:text-blue-600 mb-2">Content Management</h3>
+                                        <p className="text-sm text-slate-500 mb-4 flex-1">
+                                            Upload new content, extract chapters, and generate AI study aids.
+                                        </p>
+                                        <span className="text-blue-600 font-semibold text-sm flex items-center gap-1 group-hover:translate-x-1 transition-transform">
+                                            Manage Content <ArrowRight className="h-4 w-4" />
+                                        </span>
+                                    </motion.div>
+                                </Link>
+                            )}
 
-                            <Link href="/admin/users" className="group">
-                                <motion.div variants={itemVariants} whileHover={{ y: -5 }} className="glass-card p-6 rounded-xl border border-slate-200 hover:border-green-300 hover:shadow-lg transition-all h-full bg-white flex flex-col items-center text-center">
-                                    <div className="p-3 bg-green-50 rounded-lg mb-4 group-hover:bg-green-100 transition-colors">
-                                        <UserCog className="h-8 w-8 text-green-600" />
-                                    </div>
-                                    <h3 className="text-xl font-bold text-slate-900 group-hover:text-green-600 mb-2">User Management</h3>
-                                    <p className="text-sm text-slate-500 mb-4 flex-1">
-                                        Manage employees, assign courses, and track learning progress.
-                                    </p>
-                                    <span className="text-green-600 font-semibold text-sm flex items-center gap-1 group-hover:translate-x-1 transition-transform">
-                                        Manage Users <ArrowRight className="h-4 w-4" />
-                                    </span>
-                                </motion.div>
-                            </Link>
+                            {(isSuperAdmin || isCompanyAdmin) && (
+                                <Link href="/admin/users" className="group">
+                                    <motion.div variants={itemVariants} whileHover={{ y: -5 }} className="glass-card p-6 rounded-xl border border-slate-200 hover:border-green-300 hover:shadow-lg transition-all h-full bg-white flex flex-col items-center text-center">
+                                        <div className="p-3 bg-green-50 rounded-lg mb-4 group-hover:bg-green-100 transition-colors">
+                                            <UserCog className="h-8 w-8 text-green-600" />
+                                        </div>
+                                        <h3 className="text-xl font-bold text-slate-900 group-hover:text-green-600 mb-2">User Management</h3>
+                                        <p className="text-sm text-slate-500 mb-4 flex-1">
+                                            Manage employees, assign courses, and track learning progress.
+                                        </p>
+                                        <span className="text-green-600 font-semibold text-sm flex items-center gap-1 group-hover:translate-x-1 transition-transform">
+                                            Manage Users <ArrowRight className="h-4 w-4" />
+                                        </span>
+                                    </motion.div>
+                                </Link>
+                            )}
 
-                            <Link href="/admin/configurations" className="group">
-                                <motion.div variants={itemVariants} whileHover={{ y: -5 }} className="glass-card p-6 rounded-xl border border-slate-200 hover:border-slate-300 hover:shadow-lg transition-all h-full bg-white flex flex-col items-center text-center">
-                                    <div className="p-3 bg-slate-100 rounded-lg mb-4 group-hover:bg-slate-200 transition-colors">
-                                        <Settings className="h-8 w-8 text-slate-700" />
-                                    </div>
-                                    <h3 className="text-xl font-bold text-slate-900 group-hover:text-slate-700 mb-2">Configuration Management</h3>
-                                    <p className="text-sm text-slate-500 mb-4 flex-1">
-                                        System settings, integration preferences, and platform defaults.
-                                    </p>
-                                    <span className="text-slate-700 font-semibold text-sm flex items-center gap-1 group-hover:translate-x-1 transition-transform">
-                                        Configure <ArrowRight className="h-4 w-4" />
-                                    </span>
-                                </motion.div>
-                            </Link>
+                            {(isSuperAdmin || isCompanyAdmin) && (
+                                <Link href="/admin/configurations" className="group">
+                                    <motion.div variants={itemVariants} whileHover={{ y: -5 }} className="glass-card p-6 rounded-xl border border-slate-200 hover:border-slate-300 hover:shadow-lg transition-all h-full bg-white flex flex-col items-center text-center">
+                                        <div className="p-3 bg-slate-100 rounded-lg mb-4 group-hover:bg-slate-200 transition-colors">
+                                            <Settings className="h-8 w-8 text-slate-700" />
+                                        </div>
+                                        <h3 className="text-xl font-bold text-slate-900 group-hover:text-slate-700 mb-2">Configuration Management</h3>
+                                        <p className="text-sm text-slate-500 mb-4 flex-1">
+                                            System settings, integration preferences, and platform defaults.
+                                        </p>
+                                        <span className="text-slate-700 font-semibold text-sm flex items-center gap-1 group-hover:translate-x-1 transition-transform">
+                                            Configure <ArrowRight className="h-4 w-4" />
+                                        </span>
+                                    </motion.div>
+                                </Link>
+                            )}
                         </div>
                     )}
 

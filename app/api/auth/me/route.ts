@@ -27,6 +27,18 @@ export async function GET(req: NextRequest) {
             where: { id: userId },
             select: { id: true, name: true, email: true, role: true, image: true, department: true, companyId: true, company: { select: { name: true, shortName: true } } }
         });
+
+        // Fetch lastLogin separately via Raw SQL to handle stale client types
+        let lastLogin = null;
+        try {
+            const result = await prisma.$queryRaw<{ lastLogin: Date }[]>`SELECT "lastLogin" FROM "User" WHERE "id" = ${userId}`;
+            if (result && result.length > 0) {
+                lastLogin = result[0].lastLogin;
+            }
+        } catch (e) {
+            console.error("Failed to fetch lastLogin:", e);
+        }
+
         console.log("Debug: /api/auth/me fetched user:", user);
 
         if (!user) {
@@ -36,7 +48,7 @@ export async function GET(req: NextRequest) {
             return response;
         }
 
-        return NextResponse.json({ user });
+        return NextResponse.json({ user: { ...user, lastLogin } });
 
     } catch (error: any) {
         console.error("Debug: /api/auth/me error:", error);

@@ -11,11 +11,12 @@ interface AssignContentModalProps {
     onAssign: (data: any) => Promise<void>;
     user: any;
     courses: any[];
+    isLoadingCourses?: boolean;
 }
 
-export default function AssignContentModal({ isOpen, onClose, onAssign, user, courses }: AssignContentModalProps) {
+export default function AssignContentModal({ isOpen, onClose, onAssign, user, courses, isLoadingCourses = false }: AssignContentModalProps) {
     const [formData, setFormData] = useState({
-        courseId: '',
+        courseIds: [] as string[],
         validityValue: 365,
         validityUnit: 'DAYS',
         certificateId: '',
@@ -26,6 +27,7 @@ export default function AssignContentModal({ isOpen, onClose, onAssign, user, co
     const [certificates, setCertificates] = useState<any[]>([]);
     const [isLoadingCertificates, setIsLoadingCertificates] = useState(false);
     const [previewCert, setPreviewCert] = useState<any | null>(null);
+    const [isAssigning, setIsAssigning] = useState(false);
 
     const [searchTerm, setSearchTerm] = useState('');
     const [activeFilter, setActiveFilter] = useState<string>('All');
@@ -38,7 +40,7 @@ export default function AssignContentModal({ isOpen, onClose, onAssign, user, co
     useEffect(() => {
         if (isOpen) {
             setFormData({
-                courseId: '',
+                courseIds: [],
                 validityValue: 365,
                 validityUnit: 'DAYS',
                 hasCertificate: false,
@@ -47,6 +49,7 @@ export default function AssignContentModal({ isOpen, onClose, onAssign, user, co
             });
             setSearchTerm('');
             setIsDropdownOpen(false);
+            setIsAssigning(false);
             fetchCertificates();
         }
     }, [isOpen]);
@@ -70,8 +73,8 @@ export default function AssignContentModal({ isOpen, onClose, onAssign, user, co
         if (!isDropdownOpen && dropdownTriggerRef.current) {
             const rect = dropdownTriggerRef.current.getBoundingClientRect();
             setDropdownPosition({
-                top: rect.bottom + window.scrollY + 8, // 8px Offset
-                left: rect.left + window.scrollX,
+                top: rect.bottom + 8, // 8px Offset (No scrollY for fixed)
+                left: rect.left,      // (No scrollX for fixed)
                 width: rect.width
             });
         }
@@ -122,10 +125,20 @@ export default function AssignContentModal({ isOpen, onClose, onAssign, user, co
         return matchesSearch && matchesFilter;
     });
 
-    const selectedCourse = courses.find(c => c.id === formData.courseId);
 
-    const handleAssign = () => {
-        onAssign(formData);
+
+    const handleAssign = async () => {
+        setIsAssigning(true);
+        try {
+            const payload: any = { ...formData };
+            if (!payload.certificateId) delete payload.certificateId; // Remove if empty
+
+            await onAssign(payload);
+        } catch (error) {
+            console.error("Assignment failed", error);
+        } finally {
+            setIsAssigning(false);
+        }
     };
 
     if (!isOpen || !user) return null;
@@ -157,15 +170,24 @@ export default function AssignContentModal({ isOpen, onClose, onAssign, user, co
                             className="w-full px-4 py-2.5 border border-slate-300 rounded-lg cursor-pointer bg-white flex items-center justify-between hover:border-cyan-400 focus-within:ring-2 focus-within:ring-cyan-500 transition-all"
                             onClick={toggleDropdown}
                         >
-                            {selectedCourse ? (
-                                <div className="flex items-center gap-2 overflow-hidden">
-                                    <span className={cn(
-                                        "px-2 py-0.5 rounded text-[10px] font-bold uppercase tracking-wider shrink-0",
-                                        selectedCourse.type === 'LIBRARY' ? "bg-purple-100 text-purple-700" : "bg-cyan-100 text-cyan-700"
-                                    )}>
-                                        {selectedCourse.type === 'LIBRARY' ? 'Library' : 'Course'}
-                                    </span>
-                                    <span className="truncate font-medium text-slate-900">{selectedCourse.title}</span>
+                            {isLoadingCourses ? (
+                                <span className="text-slate-400 flex items-center gap-2">
+                                    <div className="w-4 h-4 border-2 border-slate-300 border-t-cyan-600 rounded-full animate-spin"></div>
+                                    Loading content...
+                                </span>
+                            ) : formData.courseIds.length > 0 ? (
+                                <div className="flex items-center gap-2 overflow-hidden flex-wrap">
+                                    {formData.courseIds.slice(0, 2).map(id => {
+                                        const c = courses.find(c => c.id === id);
+                                        return (
+                                            <span key={id} className="px-2 py-0.5 rounded-full bg-cyan-100 text-cyan-800 text-xs font-medium border border-cyan-200">
+                                                {c?.title}
+                                            </span>
+                                        );
+                                    })}
+                                    {formData.courseIds.length > 2 && (
+                                        <span className="text-xs text-slate-500 font-medium">+{formData.courseIds.length - 2} more</span>
+                                    )}
                                 </div>
                             ) : (
                                 <span className="text-slate-400">Search and select content...</span>
@@ -174,7 +196,7 @@ export default function AssignContentModal({ isOpen, onClose, onAssign, user, co
                         </div>
 
                         {/* Portal Dropdown Menu */}
-                        {isDropdownOpen && createPortal(
+                        {isDropdownOpen && !isLoadingCourses && createPortal(
                             <div
                                 ref={dropdownMenuRef}
                                 style={{
@@ -224,42 +246,69 @@ export default function AssignContentModal({ isOpen, onClose, onAssign, user, co
                                     ) : (
                                         filteredCourses.map(course => {
                                             const isAssigned = user.assignedCourses?.includes(course.id);
-                                            const isSelected = formData.courseId === course.id;
+                                            const isSelected = formData.courseIds.includes(course.id);
 
                                             return (
                                                 <button
                                                     key={course.id}
                                                     disabled={isAssigned}
-                                                    onClick={() => {
-                                                        setFormData(prev => ({ ...prev, courseId: course.id }));
-                                                        setIsDropdownOpen(false);
+                                                    onClick={(e) => {
+                                                        e.stopPropagation(); // Prevent closing dropdown on select
+                                                        setFormData(prev => {
+                                                            const newIds = prev.courseIds.includes(course.id)
+                                                                ? prev.courseIds.filter(id => id !== course.id)
+                                                                : [...prev.courseIds, course.id];
+                                                            return { ...prev, courseIds: newIds };
+                                                        });
                                                     }}
                                                     className={cn(
-                                                        "w-full text-left px-3 py-2.5 rounded-lg flex items-start justify-between group transition-colors",
-                                                        isSelected ? "bg-cyan-50" : "hover:bg-slate-50",
-                                                        isAssigned && "opacity-50 cursor-not-allowed bg-slate-50"
+                                                        "w-full text-left px-3 py-2.5 rounded-lg flex items-start justify-between group transition-colors border border-transparent",
+                                                        isSelected ? "bg-cyan-50 border-cyan-100" : "hover:bg-slate-50",
+                                                        isAssigned && "!opacity-60 !cursor-not-allowed !bg-slate-50/80 hover:!bg-slate-50/80 !border-transparent grayscale-[0.5]"
                                                     )}
                                                 >
                                                     <div className="flex-1 min-w-0 pr-3">
                                                         <div className="flex items-center gap-2 mb-1">
+
+                                                            {/* Checkbox for visual clarity */}
+                                                            <div className={cn(
+                                                                "h-4 w-4 rounded border flex items-center justify-center transition-colors mr-2 shrink-0",
+                                                                isSelected ? "bg-cyan-600 border-cyan-600" : "border-slate-300 bg-white",
+                                                                isAssigned && "!bg-slate-200 !border-slate-300"
+                                                            )}>
+                                                                {(isSelected || isAssigned) && <Check className={cn("h-3 w-3", isAssigned ? "text-slate-500" : "text-white")} />}
+                                                            </div>
+
                                                             <span className={cn(
                                                                 "px-1.5 py-0.5 rounded text-[10px] font-bold uppercase tracking-wider",
-                                                                course.type === 'LIBRARY' ? "bg-purple-100 text-purple-600" : "bg-cyan-100 text-cyan-600"
+                                                                course.isCompliance
+                                                                    ? "bg-amber-100 text-amber-700"
+                                                                    : (course.type === 'LIBRARY' || course.category === 'Library')
+                                                                        ? "bg-purple-100 text-purple-600"
+                                                                        : (course.category === 'Others')
+                                                                            ? "bg-slate-100 text-slate-600"
+                                                                            : "bg-cyan-100 text-cyan-600",
+                                                                isAssigned && "!bg-slate-200 !text-slate-500"
                                                             )}>
-                                                                {course.type === 'LIBRARY' ? 'Library' : 'Course'}
+                                                                {course.isCompliance ? 'Policy' :
+                                                                    ((course.type === 'LIBRARY' || course.category === 'Library') ? 'Library' :
+                                                                        (course.category === 'Others' ? 'Others' : 'Course'))}
                                                             </span>
                                                             {course.subCategory && (
-                                                                <span className="text-[10px] text-slate-500 border border-slate-200 px-1.5 py-0.5 rounded">
+                                                                <span className={cn("text-[10px] text-slate-500 border border-slate-200 px-1.5 py-0.5 rounded", isAssigned && "text-slate-400 border-slate-200")}>
                                                                     {course.subCategory.name}
                                                                 </span>
                                                             )}
                                                         </div>
-                                                        <p className={cn("text-sm font-medium truncate", isSelected ? "text-cyan-900" : "text-slate-700")}>
+                                                        <p className={cn("text-sm font-medium truncate pl-6", isSelected ? "text-cyan-900" : "text-slate-700", isAssigned && "!text-slate-500 line-through decoration-slate-300/50")}>
                                                             {course.title}
                                                         </p>
                                                     </div>
-                                                    {isAssigned && <span className="text-[10px] font-medium text-slate-400 whitespace-nowrap self-center">Assigned</span>}
-                                                    {isSelected && <Check className="h-4 w-4 text-cyan-600 shrink-0 self-center" />}
+                                                    {isAssigned && (
+                                                        <div className="flex items-center gap-1.5 text-[10px] font-medium text-slate-400 bg-slate-100 px-2 py-1 rounded-full border border-slate-200 self-center shrink-0">
+                                                            <Check className="h-3 w-3" /> Assigned
+                                                        </div>
+                                                    )}
                                                 </button>
                                             );
                                         })
@@ -392,10 +441,17 @@ export default function AssignContentModal({ isOpen, onClose, onAssign, user, co
                     </button>
                     <button
                         onClick={handleAssign}
-                        disabled={!formData.courseId}
-                        className="px-6 py-2 bg-cyan-600 text-white rounded-lg hover:bg-cyan-700 font-medium disabled:opacity-50 disabled:cursor-not-allowed shadow-lg shadow-cyan-500/20 transition-all hover:shadow-cyan-500/30"
+                        disabled={formData.courseIds.length === 0 || isAssigning}
+                        className="px-6 py-2 bg-cyan-600 text-white rounded-lg hover:bg-cyan-700 font-medium disabled:opacity-50 disabled:cursor-not-allowed shadow-lg shadow-cyan-500/20 transition-all hover:shadow-cyan-500/30 flex items-center gap-2"
                     >
-                        Assign Course
+                        {isAssigning ? (
+                            <>
+                                <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin"></div>
+                                Assigning...
+                            </>
+                        ) : (
+                            'Assign Content'
+                        )}
                     </button>
                 </div>
             </div>
@@ -417,8 +473,15 @@ export default function AssignContentModal({ isOpen, onClose, onAssign, user, co
                                         src={previewCert.bannerImage}
                                         alt={previewCert.name}
                                         fill
-                                        className="object-contain"
+                                        className="object-contain bg-slate-800"
                                     />
+                                    {/* Name Overlay - Positioned to match CertificateMaster default layout (50% from top) */}
+                                    <div className="absolute top-[50%] left-0 right-0 text-center -translate-y-1/2 px-8">
+                                        <span className="text-3xl md:text-5xl font-serif font-bold text-white drop-shadow-lg break-words filter backdrop-blur-[1px] bg-black/10 px-4 py-1 rounded">
+                                            {user.name}
+                                        </span>
+                                        <div className="w-1/2 h-0.5 bg-white/50 mx-auto mt-2 shadow-sm rounded-full" />
+                                    </div>
                                 </div>
                             ) : (
                                 <p className="text-white/50">No preview image available</p>

@@ -3,14 +3,17 @@ const path = require('path');
 module.exports = {
     apps: [
         {
-            name: '3vidya',
+            name: '3vidya-platform', // Updated name
             cwd: '.',
-            script: path.join(__dirname, '.next', 'standalone', '3VidyaNew', 'server.js'),
+            script: 'npm',
+            args: 'start', // Runs 'next start'
             instances: 1,
-            exec_mode: 'fork',
+            autorestart: true,
+            watch: false,
+            max_memory_restart: '1G',
             env: {
                 NODE_ENV: 'production',
-                PORT: 4401,
+                PORT: 3000,
                 HOSTNAME: '0.0.0.0'
             },
         },

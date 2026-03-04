@@ -12,18 +12,17 @@ export const maxDuration = 300; // 5 minutes
 
 const prisma = new PrismaClient();
 
-// In a real app, move to lib/groq.ts
-const getGroqClient = () => {
-    const apiKey = process.env.GROQ_API_KEY;
-    if (!apiKey) throw new Error("GROQ_API_KEY is missing");
-    return new Groq({ apiKey });
-};
+import { getGroqKeyForUser } from '@/lib/ai-config';
+
+// ... (imports remain)
+
+// Removed unused getGroqClient
 
 async function processWithGroq(text: string, category: string, apiKey: string) {
     if (!apiKey) return { title: "Extracted Course", chapters: [] };
 
     const groq = new Groq({ apiKey });
-
+    // ... (rest of processWithGroq remains same)
     const systemPrompt = `You are an expert educational content creator. 
 Analyze the document text provided by the user about "${category}".
 Extract the course title and a list of chapters with their sub-topics (3-5 items).
@@ -77,6 +76,9 @@ export async function POST(req: NextRequest) {
         const description = formData.get('description') as string;
         const thumbnailUrl = formData.get('thumbnailUrl') as string;
 
+        // Fetch User and API Key
+        const { apiKey, userId } = await getGroqKeyForUser(req);
+
         if (!file) return NextResponse.json({ error: 'No file uploaded' }, { status: 400 });
 
         console.log("File:", file.name, "Size:", file.size, "Type:", file.type);
@@ -115,7 +117,7 @@ export async function POST(req: NextRequest) {
         }
 
         // 3. AI Process or Compliance Extraction
-        const apiKey = process.env.GROQ_API_KEY || "";
+        // const apiKey = process.env.GROQ_API_KEY || ""; // REPLACED
         const isCompliance = formData.get('isCompliance') === 'true';
         let structure: any = {};
 
@@ -158,14 +160,13 @@ export async function POST(req: NextRequest) {
             };
         } else {
             // Standard AI Mode
-            structure = await processWithGroq(text, category, apiKey);
+            structure = await processWithGroq(text, category, apiKey || "");
         }
 
         // 4. Save to Prisma
         const courseTitle = customTitle || structure.title || file.name.replace(/\.[^/.]+$/, "");
 
-        const author = await prisma.user.findFirst();
-        const authorId = author?.id || "u1";
+        const authorId = userId || (await prisma.user.findFirst())?.id || "u1";
 
         const existingCourse = await prisma.course.findFirst({
             where: { title: courseTitle, authorId }

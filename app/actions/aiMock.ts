@@ -136,10 +136,12 @@ export async function aiAssistantChatAction(messages: any[], contextType: string
     if (messages.length === 1) {
         if (contextType === 'policy') {
             response = "I can help you draft a comprehensive policy document. What type of policy do you need? (e.g., NDA, Attendance, Code of Conduct, Data Privacy)";
-        } else if (contextType === 'document') {
-            response = "I can create detailed documentation for you. Please describe what you need - for example:\n• User Manual\n• Training Guide\n• Technical Documentation\n• Process Handbook";
+        } else if (contextType === 'course') {
+            response = "I can create detailed course content for you. Please describe the topic - for example:\n• React Fundamentals\n• Leadership Skills\n• Safety Procedures\n• Sales Techniques";
+        } else if (contextType === 'library') {
+            response = "I can generate detailed articles or research summaries. What topic would you like to cover? (e.g., Productivity Hacks, Industry Trends, Concept Explainers)";
         } else {
-            response = "I can generate detailed learning content. What topic would you like to cover? (e.g., Productivity, Leadership, Sales Techniques)";
+            response = "I can generate detailed learning content. What topic would you like to cover?";
         }
         return { success: true, message: response };
     }
@@ -149,127 +151,171 @@ export async function aiAssistantChatAction(messages: any[], contextType: string
         userMessage.includes('create') ||
         userMessage.includes('generate') ||
         userMessage.includes('write') ||
-        userMessage.includes('manual') ||
+        userMessage.includes('generate') ||
+        userMessage.includes('write') ||
+        userMessage.includes('course') ||
         userMessage.includes('policy') ||
-        userMessage.includes('document');
+        userMessage.includes('library') ||
+        userMessage.length > 20 || // If user input is long enough, assume they provided details
+        messages.length > 1; // Any follow-up is treated as an attempt to generate
 
-    if (isGenerationRequest && messages.length > 1) {
+    if (isGenerationRequest) {
+        // 1. Check if we have existing content to modify
+        const lastAssistantMsg = [...messages].reverse().find(m => m.role === 'assistant' && m.content.startsWith('#'));
+        let currentContent = lastAssistantMsg ? lastAssistantMsg.content : null;
+
+        // Check if this is a request to start entirely new content
+        const isNewRequest = userMessage.includes('create new') || userMessage.includes('start over') || userMessage.includes('ignore previous');
+
+        if (currentContent && !isNewRequest) {
+            // --- Modification Logic ---
+            let modified = false;
+
+            // A. Remove Section
+            if (userMessage.includes('remove') || userMessage.includes('delete')) {
+                // Support "section 5 -> Title" or "section 5" or "Title"
+                const removeMatch = userMessage.match(/(?:remove|delete)\s+(?:section\s+)?(.+)/i);
+
+                if (removeMatch) {
+                    let term = removeMatch[1].trim();
+                    // Clean up "->" if present (e.g. "5 -> Compliance") -> take "5" or "Compliance"
+                    // If it has "->", usually the user means "Section X which is Title Y". 
+                    // Let's try to match the *Header* that contains "5" AND "Compliance" or just "Compliance"
+
+                    const arrowMatch = term.split('->');
+                    let targetSection = term;
+                    if (arrowMatch.length > 1) {
+                        // "5" and "Compliance"
+                        const sectionNum = arrowMatch[0].trim().replace(/section|part/gi, '').trim();
+                        const sectionTitle = arrowMatch[1].trim();
+                        // Try to find a header with EITHER
+                        targetSection = sectionTitle || sectionNum;
+                    }
+
+                    // Flexible Regex: Match ## <anything>TERM<anything>
+                    // Escape special chars in term just in case, but simple alphanumeric is mostly expected
+                    const safeTerm = targetSection.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+
+                    // Regex to find:
+                    // ^##+ (any chars) match (any chars) (newline)
+                    // ... content ...
+                    // (?=^##|$) -> Lookahead for next header or end of string
+                    const sectionRegex = new RegExp(`^##+ .*${safeTerm}[\\s\\S]*?(?=^##|$)`, 'im');
+
+                    if (currentContent.match(sectionRegex)) {
+                        currentContent = currentContent.replace(sectionRegex, '');
+                        modified = true;
+                    }
+                }
+            }
+
+            // B. Change Title/Heading
+            if (userMessage.includes('heading') || userMessage.includes('title') || userMessage.includes('rename') || userMessage.includes('topic') || userMessage.includes('change')) {
+                const titleMatch = userMessage.match(/(?:to|as)\s+(.+)$/i);
+                if (titleMatch) {
+                    let newTitle = titleMatch[1].trim();
+                    // Remove common trailing punctuation
+                    newTitle = newTitle.replace(/[.,;!?]+$/, '');
+                    if (newTitle) {
+                        currentContent = currentContent.replace(/^# .*/m, `# ${newTitle}`);
+                        modified = true;
+                    }
+                }
+            }
+
+            // C. Add Details / Expand
+            if (userMessage.includes('add details') || userMessage.includes('more details') || userMessage.includes('expand')) {
+                const sectionMatch = userMessage.match(/(?:on|to)\s+(.+)/i);
+                const term = sectionMatch ? sectionMatch[1].trim() : null;
+
+                const detailText = `\n\n### Additional Details\nHere are further details as requested. This section delves deeper into the specifics, providing comprehensive analysis and operational guidelines to ensure clarity and effective implementation.\n\n- **Nuance 1**: Critical factor to consider.\n- **Nuance 2**: Secondary impact analysis.\n`;
+
+                if (term) {
+                    const sectionRegex = new RegExp(`(##+ .*${term}.*)`, 'i');
+                    if (currentContent.match(sectionRegex)) {
+                        currentContent = currentContent.replace(sectionRegex, `$1${detailText}`);
+                        modified = true;
+                    }
+                } else {
+                    currentContent = currentContent.replace(/(## (Introduction|1\. Purpose)[\s\S]*?)(?=##|$)/i, `$1${detailText}`);
+                    modified = true;
+                }
+            }
+
+            // IMPORTANT: Even if 'modified' is false (command validation failed), 
+            // result the CURRENT content to prevent "resetting" to the original template.
+            // This fixes the bug where "Update 2" reverts "Update 1" if "Update 2" isn't understood.
+            return {
+                success: true,
+                message: currentContent,
+                isComplete: true
+            };
+        }
+
+        // --- New Generation Logic (Fallback) ---
+        // Only reached if NO previous content exists OR user explicitly asked for 'new'
+
         // Extract key details from user message
         const pageMatch = userMessage.match(/(\d+)\s*(page|pg)/);
         const pages = pageMatch ? parseInt(pageMatch[1]) : 3;
 
+        // Use the FIRST user message as the core topic to avoid using refinement instructions (e.g. "add details") as the title
+        const firstUserMsg = messages.find(m => m.role === 'user');
+        const topicSource = firstUserMsg ? firstUserMsg.content : messages[messages.length - 1].content;
+
+        // Clean the topic source for the title
+        const cleanTitle = topicSource.replace(/generate|create|write|course|policy|library|prepare/gi, '').trim();
+
         // Generate actual content based on context
-        if (contextType === 'document' && userMessage.includes('user manual')) {
-            response = `# User Manual for Product
+        if (contextType === 'course') {
+            response = `# ${cleanTitle || 'Course Content'}
+            
+## Course Overview
+This course is designed to provide a comprehensive understanding of **${cleanTitle || 'the subject'}**, broken down into logical modules.
 
-## Table of Contents
-1. Introduction
-2. Getting Started
-3. Key Features
-4. Troubleshooting
-5. Support & Contact
+## Module 1: Introduction
+- **Objective**: Understand the core concepts and importance.
+- **Key Visuals**: Diagrams explaining the ecosystem.
 
----
+### 1.1 What is it?
+A foundational overview explaining the definition, history, and relevance in today's context.
 
-## 1. Introduction
-
-Welcome to the comprehensive user manual for our product. This guide is designed to help you maximize the value and efficiency of your experience.
-
-### Purpose
-This manual provides step-by-step instructions, best practices, and troubleshooting guidance to ensure seamless operation.
-
-### Who Should Use This Manual
-- New users getting started
-- Experienced users seeking advanced features
-- Support teams assisting customers
+### 1.2 Why it matters?
+Explaining the impact and benefits of mastering this topic.
 
 ---
 
-## 2. Getting Started
+## Module 2: Core Principles
+- **Theory**: Deep dive into the theoretical framework.
+- **Application**: Real-world examples.
 
-### Initial Setup
-1. **Unpack the product** carefully and verify all components
-2. **Connect to power source** using the provided adapter
-3. **Follow the on-screen setup wizard** to configure basic settings
-4. **Create your user account** with a secure password
+### 2.1 Principle A
+Detailed explanation of the first core principle.
 
-### System Requirements
-- Operating System: Windows 10/11, macOS 12+, or Linux
-- RAM: Minimum 4GB (8GB recommended)
-- Storage: 500MB available space
-- Internet connection for cloud features
+### 2.2 Principle B
+Detailed explanation of the second core principle.
 
 ---
 
-## 3. Key Features
+## Module 3: Advanced Concepts
+- **Complexity**: Handling edge cases and advanced scenarios.
+- **Strategy**: Best practices for implementation.
 
-### Feature 1: Dashboard Overview
-The main dashboard provides real-time insights and quick access to all major functions.
-
-**How to Use:**
-- Navigate to the home screen
-- Click on any widget to expand details
-- Customize layout by dragging and dropping panels
-
-### Feature 2: Advanced Analytics
-Track performance metrics and generate detailed reports.
-
-**Benefits:**
-- Data-driven decision making
-- Automated report generation
-- Export to PDF, Excel, or CSV
-
-### Feature 3: Collaboration Tools
-Work seamlessly with your team through integrated communication features.
-
-**Capabilities:**
-- Real-time chat and video calls
-- Shared workspaces
-- Task assignment and tracking
+### 3.1 Strategies for Success
+Actionable steps to achieve mastery.
 
 ---
 
-## 4. Troubleshooting
-
-### Common Issues
-
-**Issue: Application won't start**
-- Solution: Check system requirements and restart your device
-- Verify installation integrity
-- Contact support if issue persists
-
-**Issue: Slow performance**
-- Solution: Clear cache and temporary files
-- Close unnecessary background applications
-- Update to the latest version
-
-**Issue: Login problems**
-- Solution: Reset password using "Forgot Password" link
-- Verify internet connection
-- Check if account is active
-
----
-
-## 5. Support & Contact
-
-### Getting Help
-- **Email:** support@company.com
-- **Phone:** 1-800-SUPPORT (24/7)
-- **Live Chat:** Available on our website
-- **Knowledge Base:** help.company.com
-
-### Feedback
-We value your input! Share suggestions at feedback@company.com
-
----
-
-*Document Version: 1.0 | Last Updated: ${new Date().toLocaleDateString()}*`;
+## Assessment
+1. What is the primary goal of this course?
+2. Explain Principle A in your own words.
+3. List three benefits discussed in Module 1.`;
 
         } else if (contextType === 'policy') {
-            response = `# Non-Disclosure Agreement (NDA) Policy
-
+            response = `# ${cleanTitle || 'Policy Document'}
+            
 ## Document Control
-- **Policy Number:** POL-2025-001
+- **Policy Number:** POL-${new Date().getFullYear()}-001
 - **Effective Date:** ${new Date().toLocaleDateString()}
 - **Review Date:** Annual
 - **Owner:** Legal & Compliance Department
@@ -277,198 +323,61 @@ We value your input! Share suggestions at feedback@company.com
 ---
 
 ## 1. Purpose
-
-This Non-Disclosure Agreement (NDA) Policy establishes the framework for protecting confidential and proprietary information of the organization and its stakeholders.
-
-### Objectives
-- Safeguard sensitive business information
-- Define responsibilities of all parties
-- Establish legal recourse for breaches
-- Maintain competitive advantage
-
----
+The purpose of this policy is to establish clear guidelines and standards regarding **${cleanTitle}**, ensuring compliance and operational excellence.
 
 ## 2. Scope
+This policy applies to all employees, contractors, and third-party partners acting on behalf of the company.
 
-This policy applies to:
-- All employees (full-time, part-time, contractors)
-- Third-party vendors and partners
-- Consultants and advisors
-- Board members and executives
+## 3. Policy Statements
+### 3.1 General Principles
+All individuals must adhere to the highest standards of integrity and profesionalism.
 
----
+### 3.2 Specific Requirements
+- Requirement A: Must be followed at all times.
+- Requirement B: Exceptions require written approval.
 
-## 3. Definitions
+## 4. Roles and Responsibilities
+- **Management**: Ensure policy is communicated and enforced.
+- **Employees**: Read, understand, and comply with the policy.
 
-### Confidential Information
-Any data or information that:
-- Is not publicly available
-- Provides competitive advantage
-- Is marked as "Confidential" or "Proprietary"
-- Includes but not limited to:
-  - Trade secrets
-  - Customer data
-  - Financial information
-  - Product roadmaps
-  - Business strategies
-
-### Disclosing Party
-The entity sharing confidential information
-
-### Receiving Party
-The entity receiving confidential information
+## 5. Compliance and Consequences
+Failure to comply with this policy may result in disciplinary action up to and including termination of employment.
 
 ---
 
-## 4. Obligations
-
-### 4.1 Receiving Party Responsibilities
-The Receiving Party must:
-- **Maintain confidentiality** of all disclosed information
-- **Use information solely** for authorized purposes
-- **Limit access** to personnel with legitimate need-to-know
-- **Implement security measures** to prevent unauthorized disclosure
-- **Return or destroy** information upon request or termination
-
-### 4.2 Permitted Disclosures
-Information may be disclosed when:
-- Required by law or court order (with prior notice to Disclosing Party)
-- Already in public domain through no fault of Receiving Party
-- Independently developed without use of confidential information
-- Approved in writing by Disclosing Party
-
----
-
-## 5. Term and Termination
-
-- **Duration:** This agreement remains in effect for 5 years from the date of disclosure
-- **Survival:** Confidentiality obligations survive termination
-- **Termination:** Either party may terminate with 30 days written notice
-
----
-
-## 6. Consequences of Breach
-
-Violation of this policy may result in:
-- Immediate termination of employment/contract
-- Legal action for damages
-- Injunctive relief
-- Criminal prosecution where applicable
-
----
-
-## 7. Compliance and Monitoring
-
-- Annual training for all employees
-- Regular audits of information handling practices
-- Incident reporting mechanism
-- Disciplinary procedures for violations
-
----
-
-## 8. Acknowledgment
-
-All parties must sign an acknowledgment form confirming:
-- Receipt and understanding of this policy
-- Commitment to comply with all terms
-- Awareness of consequences for non-compliance
-
----
-
-**Approved by:** Legal Department  
-**Signature:** _________________  
+**Approved by:** Executive Management
 **Date:** ${new Date().toLocaleDateString()}`;
 
         } else {
-            // General detailed content
-            response = `# ${userMessage.includes('productivity') ? 'Productivity Enhancement Guide' : 'Professional Development Guide'}
+            // Context 'library' or default
+            response = `# ${cleanTitle || 'Knowledge Article'}
 
-## Executive Summary
+## Abstract
+A concise summary of the topic, providing a quick overview for the reader.
 
-This comprehensive guide provides actionable strategies and proven techniques to enhance performance and achieve measurable results.
+## Introduction
+**${cleanTitle}** is a critical concept in the modern landscape. This article explores its nuances, implications, and practical applications.
 
----
+## Key Concepts
 
-## Chapter 1: Foundations
+### Concept 1: The Foundation
+Understanding the basics is crucial. This involves...
 
-### Understanding Core Principles
-Success in any professional endeavor requires a solid foundation built on:
+### Concept 2: The Evolution
+How this concept has evolved over time and what it means for the future.
 
-1. **Clear Goal Setting**
-   - Define SMART objectives (Specific, Measurable, Achievable, Relevant, Time-bound)
-   - Break down large goals into manageable milestones
-   - Regular progress tracking and adjustment
+## In-Depth Analysis
+An analysis of current trends, data, and expert opinions regarding the subject.
 
-2. **Time Management**
-   - Prioritize tasks using the Eisenhower Matrix
-   - Implement time-blocking techniques
-   - Minimize distractions and context switching
-
-3. **Continuous Learning**
-   - Dedicate time for skill development
-   - Seek feedback and mentorship
-   - Stay updated with industry trends
-
----
-
-## Chapter 2: Practical Strategies
-
-### Daily Routines for Success
-
-**Morning Routine:**
-- Review daily priorities (15 minutes)
-- Tackle most challenging task first
-- Limit email checking to scheduled times
-
-**Afternoon Optimization:**
-- Take strategic breaks every 90 minutes
-- Collaborate and communicate with team
-- Review and adjust plans as needed
-
-**Evening Reflection:**
-- Document achievements and learnings
-- Prepare tomorrow's priority list
-- Disconnect from work for proper rest
-
----
-
-## Chapter 3: Tools and Techniques
-
-### Productivity Tools
-- **Task Management:** Asana, Trello, Monday.com
-- **Time Tracking:** RescueTime, Toggl
-- **Focus:** Forest, Freedom, Cold Turkey
-
-### Proven Techniques
-- **Pomodoro Technique:** 25-minute focused work sessions
-- **Getting Things Done (GTD):** Comprehensive task management system
-- **Deep Work:** Dedicated distraction-free periods
-
----
-
-## Chapter 4: Measuring Success
-
-### Key Performance Indicators
-- Tasks completed vs. planned
-- Quality of deliverables
-- Time to completion
-- Stakeholder satisfaction
-
-### Continuous Improvement
-- Weekly reviews
-- Monthly assessments
-- Quarterly goal realignment
-- Annual strategic planning
-
----
+> "Insightful quote regarding the topic to add depth."
 
 ## Conclusion
+Summarizing the key takeaways and offering a final thought on the importance of the subject.
 
-Implementing these strategies consistently will lead to significant improvements in productivity and professional growth. Remember: progress, not perfection, is the goal.
-
----
-
-*For additional resources and support, contact your manager or HR department.*`;
+## References
+- Industry Standard Guidelines
+- Academic Research Papers
+- Expert Interviews`;
         }
 
         return {
@@ -478,7 +387,8 @@ Implementing these strategies consistently will lead to significant improvements
         };
     }
 
-    // Follow-up questions
+    // This should ideally not be reached if messages.length > 1 given our loose check above, 
+    // but just in case, we default to the general prompt.
     response = "I understand. To create the best content for you, could you provide more details about:\n\n• Target audience\n• Specific topics to cover\n• Desired length or depth\n• Any specific requirements or constraints\n\nOr simply tell me: 'Generate the content' and I'll create a comprehensive document based on what you've shared so far.";
 
     return {

@@ -3,12 +3,12 @@
 import React, { useState, useEffect, useRef } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
-import { ChevronLeft, MessageSquare, Briefcase, Zap, User, Mic2, Users, Handshake, Award, Play, Pause, Settings, Mic, Send, LogOut } from 'lucide-react';
+import { ChevronLeft, MessageSquare, Briefcase, Zap, User, UserRound, Mic2, Users, Handshake, Award, Play, Pause, Settings, Mic, Send, LogOut, Rewind, FastForward } from 'lucide-react';
 import CoachVoiceSettings from '@/components/CoachVoiceSettings';
 import SpeechSpeedControl from '@/components/SpeechSpeedControl';
 import { useVoiceInput } from '@/hooks/useVoiceInput';
-import { speakText, VoicePreferences } from '@/utils/voiceUtils';
-
+import { speakText, VoicePreferences, seekAudio } from '@/utils/voiceUtils';
+import MainHeader from '@/components/MainHeader';
 
 type Message = {
     role: 'user' | 'system' | 'assistant';
@@ -72,12 +72,22 @@ export default function RoleplayPage() {
     const [sessionId, setSessionId] = useState<string | null>(null);
     const [playbackSpeed, setPlaybackSpeed] = useState(1.0);
     const [speakingLineIdx, setSpeakingLineIdx] = useState<number | null>(null);
+    const [speakingProgress, setSpeakingProgress] = useState<number>(0);
     const [currentUserId, setCurrentUserId] = useState<string>('');
     const [loading, setLoading] = useState(false);
     const lastInputSource = useRef<'text' | 'voice'>('text');
 
     // Voice Settings
-    const [voicePrefs, setVoicePrefs] = useState<VoicePreferences>({ gender: 'female', accent: 'IN' });
+    const [voicePrefs, setVoicePrefs] = useState<VoicePreferences>({ gender: 'male', accent: 'IN' });
+
+    // Handle dynamic voice switching mid-playback
+    useEffect(() => {
+        if (speakingLineIdx !== null && messages[speakingLineIdx]) {
+            // Replay the current message with the new voice setting
+            handleSpeak(messages[speakingLineIdx].content, speakingLineIdx);
+        }
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [voicePrefs.gender]); // Only trigger when gender changes
 
     // Load Speed Preference
     useEffect(() => {
@@ -185,6 +195,7 @@ export default function RoleplayPage() {
         // Stop if already speaking this line
         if (idx !== undefined && speakingLineIdx === idx) {
             setSpeakingLineIdx(null);
+            setSpeakingProgress(0);
             window.speechSynthesis.cancel();
             setIsAiSpeaking(false);
             return;
@@ -195,14 +206,26 @@ export default function RoleplayPage() {
             voicePrefs,
             () => { // OnStart
                 setIsAiSpeaking(true);
-                if (idx !== undefined) setSpeakingLineIdx(idx);
+                if (idx !== undefined) {
+                    setSpeakingLineIdx(idx);
+                    setSpeakingProgress(0);
+                }
             },
             () => { // OnEnd
                 setIsAiSpeaking(false);
-                if (idx !== undefined) setSpeakingLineIdx(null);
+                if (idx !== undefined) {
+                    setSpeakingLineIdx(null);
+                    setSpeakingProgress(0);
+                }
             },
-            undefined, // onBoundary
-            playbackSpeed // speed
+            undefined, // textLanguage
+            playbackSpeed, // rate
+            undefined, // onLoading
+            (progress) => { // onProgress
+                if (idx !== undefined) {
+                    setSpeakingProgress(progress);
+                }
+            }
         );
     };
 
@@ -249,42 +272,47 @@ export default function RoleplayPage() {
         }
     };
 
+    // ... (skipping down to the render method)
+
     if (!scenario) {
         return (
-            <div className="min-h-screen bg-slate-50 p-6 flex flex-col items-center justify-center">
-                <div className="max-w-4xl w-full">
-                    <button
-                        onClick={() => {
-                            window.speechSynthesis.cancel();
-                            router.push('/coach');
-                        }}
-                        className="flex items-center gap-2 text-slate-500 hover:text-slate-900 mb-8 transition-colors"
-                    >
-                        <ChevronLeft className="h-5 w-5" /> Back to Coach
-                    </button>
+            <div className="min-h-screen bg-slate-50 flex flex-col">
+                <MainHeader />
+                <div className="flex-1 p-6 flex flex-col items-center justify-center">
+                    <div className="max-w-4xl w-full">
+                        <button
+                            onClick={() => {
+                                window.speechSynthesis.cancel();
+                                router.push('/coach');
+                            }}
+                            className="flex items-center gap-2 text-slate-500 hover:text-slate-900 mb-8 transition-colors"
+                        >
+                            <ChevronLeft className="h-5 w-5" /> Back to Coach
+                        </button>
 
-                    <h1 className="text-4xl font-bold text-slate-900 mb-4 text-center">Choose Your Challenge</h1>
-                    <p className="text-slate-500 text-center mb-12 text-lg">Select a scenario to start your voice roleplay session.</p>
+                        <h1 className="text-4xl font-bold text-slate-900 mb-4 text-center">Choose Your Challenge</h1>
+                        <p className="text-slate-500 text-center mb-12 text-lg">Select a scenario to start your voice roleplay session.</p>
 
-                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 animate-in fade-in slide-in-from-bottom-6 duration-700">
-                        {SCENARIOS.map((s, idx) => (
-                            <button
-                                key={s.id}
-                                onClick={() => handleScenarioSelect(s.id)}
-                                className="group relative bg-white p-1 rounded-2xl shadow-sm hover:shadow-2xl transition-all duration-300 hover:-translate-y-1 overflow-hidden"
-                                style={{ animationDelay: `${idx * 100}ms` }}
-                            >
-                                <div className={`absolute inset-0 bg-gradient-to-br ${s.color} opacity-0 group-hover:opacity-100 transition-opacity duration-300`} />
-                                <div className="relative bg-white p-7 rounded-xl h-full flex flex-col items-start text-left z-10 transition-colors group-hover:bg-opacity-95">
-                                    <div className={`h-14 w-14 rounded-xl flex items-center justify-center mb-6 text-white bg-gradient-to-br ${s.color} shadow-md group-hover:scale-110 transition-transform duration-300`}>
-                                        {s.icon}
+                        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 animate-in fade-in slide-in-from-bottom-6 duration-700">
+                            {SCENARIOS.map((s, idx) => (
+                                <button
+                                    key={s.id}
+                                    onClick={() => handleScenarioSelect(s.id)}
+                                    className="group relative bg-white p-1 rounded-2xl shadow-sm hover:shadow-2xl transition-all duration-300 hover:-translate-y-1 overflow-hidden"
+                                    style={{ animationDelay: `${idx * 100}ms` }}
+                                >
+                                    <div className={`absolute inset-0 bg-gradient-to-br ${s.color} opacity-0 group-hover:opacity-100 transition-opacity duration-300`} />
+                                    <div className="relative bg-white p-7 rounded-xl h-full flex flex-col items-start text-left z-10 transition-colors group-hover:bg-opacity-95">
+                                        <div className={`h-14 w-14 rounded-xl flex items-center justify-center mb-6 text-white bg-gradient-to-br ${s.color} shadow-md group-hover:scale-110 transition-transform duration-300`}>
+                                            {s.icon}
+                                        </div>
+                                        <h3 className="text-xl font-bold text-slate-900 mb-2">{s.title}</h3>
+                                        <p className="text-slate-500 text-sm leading-relaxed group-hover:text-slate-600">{s.desc}</p>
+                                        <div className={`absolute -bottom-10 -right-10 h-32 w-32 bg-gradient-to-br ${s.color} opacity-5 rounded-full group-hover:scale-150 transition-transform duration-500`} />
                                     </div>
-                                    <h3 className="text-xl font-bold text-slate-900 mb-2">{s.title}</h3>
-                                    <p className="text-slate-500 text-sm leading-relaxed group-hover:text-slate-600">{s.desc}</p>
-                                    <div className={`absolute -bottom-10 -right-10 h-32 w-32 bg-gradient-to-br ${s.color} opacity-5 rounded-full group-hover:scale-150 transition-transform duration-500`} />
-                                </div>
-                            </button>
-                        ))}
+                                </button>
+                            ))}
+                        </div>
                     </div>
                 </div>
             </div>
@@ -299,7 +327,29 @@ export default function RoleplayPage() {
                     <ChevronLeft className="h-5 w-5" /> End
                 </button>
 
-                <div className="flex items-center gap-2">
+                <div className="flex items-center gap-4">
+                    {/* Voice Gender Toggle */}
+                    <div className="flex bg-slate-100/80 p-1 rounded-full border border-slate-200 shadow-inner">
+                        <button
+                            onClick={() => setVoicePrefs(prev => ({ ...prev, gender: 'male' }))}
+                            className={`flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-semibold transition-all duration-200 ${voicePrefs.gender === 'male'
+                                ? 'bg-white text-cyan-700 shadow-sm ring-1 ring-black/5'
+                                : 'text-slate-500 hover:text-slate-700 hover:bg-slate-200/50'
+                                }`}
+                        >
+                            <User className="h-4 w-4" /> Male
+                        </button>
+                        <button
+                            onClick={() => setVoicePrefs(prev => ({ ...prev, gender: 'female' }))}
+                            className={`flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-semibold transition-all duration-200 ${voicePrefs.gender === 'female'
+                                ? 'bg-white text-cyan-700 shadow-sm ring-1 ring-black/5'
+                                : 'text-slate-500 hover:text-slate-700 hover:bg-slate-200/50'
+                                }`}
+                        >
+                            <UserRound className="h-4 w-4" /> Female
+                        </button>
+                    </div>
+
                     <SpeechSpeedControl
                         speed={playbackSpeed}
                         onChange={handleSpeedChange}
@@ -312,7 +362,7 @@ export default function RoleplayPage() {
                     </div>
                 </div>
 
-                {/* Empty 3rd col to balance center if needed, or just justify-between handles it */}
+                {/* Empty 3rd col removed as gap handles layout */}
             </header>
 
             {/* Chat Area - Matches Language Coach Styling */}
@@ -335,22 +385,40 @@ export default function RoleplayPage() {
                                 {m.role === 'user' ? <User className="h-4 w-4" /> : <Zap className="h-4 w-4" />}
                             </div>
 
-                            <div className={`max-w-[80%] space-y-1`}>
+                            <div className="max-w-[80%] space-y-1">
                                 <div className={`p-4 rounded-2xl text-sm leading-relaxed ${m.role === 'user'
                                     ? 'bg-slate-800 text-white rounded-tr-sm'
                                     : 'bg-white border border-slate-100 text-slate-800 rounded-tl-sm shadow-sm'}`}>
-                                    {m.content}
+                                    {speakingLineIdx === idx ? (
+                                        <span>
+                                            {m.content.split(' ').map((word, wIdx, arr) => {
+                                                const activeWordIndex = Math.min(
+                                                    Math.floor(speakingProgress * arr.length),
+                                                    arr.length - 1
+                                                );
+                                                return (
+                                                    <span key={wIdx} className={`transition-colors duration-75 ${wIdx === activeWordIndex ? 'bg-yellow-200 text-slate-900 rounded-[2px] px-0.5' : ''}`}>
+                                                        {word}{wIdx < arr.length - 1 ? ' ' : ''}
+                                                    </span>
+                                                );
+                                            })}
+                                        </span>
+                                    ) : (
+                                        m.content
+                                    )}
                                 </div>
 
-                                {/* Play Button - Clean Integration */}
-                                <button
-                                    onClick={() => handleSpeak(m.content, idx)}
-                                    className={`text-xs flex items-center gap-1 hover:underline ${m.role === 'user' ? 'text-slate-400 ml-auto' : 'text-cyan-600'
-                                        }`}
-                                >
-                                    {speakingLineIdx === idx ? <Pause className="h-3 w-3" /> : <Play className="h-3 w-3" />}
-                                    {speakingLineIdx === idx ? 'Stop' : 'Play'}
-                                </button>
+                                {/* Play controls - Clean Integration */}
+                                <div className={`flex items-center gap-3 mt-1 ${m.role === 'user' ? 'justify-end' : 'justify-start'}`}>
+                                    <button
+                                        onClick={() => handleSpeak(m.content, idx)}
+                                        className={`text-xs flex items-center gap-1 hover:underline transition-colors ${m.role === 'user' ? 'text-slate-400' : 'text-cyan-600'
+                                            }`}
+                                    >
+                                        {speakingLineIdx === idx ? <Pause className="h-3 w-3" /> : <Play className="h-3 w-3" />}
+                                        {speakingLineIdx === idx ? 'Stop' : 'Play'}
+                                    </button>
+                                </div>
                             </div>
                         </div>
                     ))
@@ -426,7 +494,7 @@ export default function RoleplayPage() {
                         <Send className="h-5 w-5" />
                     </button>
                 </div>
-            </div >
-        </div >
+            </div>
+        </div>
     );
 }

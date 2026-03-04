@@ -18,6 +18,7 @@ import {
 import { cn } from '@/lib/utils';
 import ProfileDropdown from '@/components/ProfileDropdown';
 import { processHtmlForSpeech } from '@/lib/speechUtils';
+import { formatRawContent } from '@/lib/text-formatting';
 import { updateTopicProgress, completeCourse } from '@/app/actions/progress';
 import { useAuth } from '@/components/AuthProvider';
 // @ts-ignore
@@ -393,7 +394,12 @@ export default function CoursePlayer() {
 
             // Process HTML for Speech Highlighting
             const rawText = activeTopic.content?.text || '';
-            const htmlContent = marked.parse(rawText) as string; // Convert MD to HTML
+            console.log('[CoursePlayer] Formatting Raw Text:', rawText.substring(0, 50) + '...');
+
+            const formattedText = formatRawContent(rawText);
+            console.log('[CoursePlayer] Formatted Text:', formattedText.substring(0, 50) + '...');
+
+            const htmlContent = marked.parse(formattedText) as string; // Convert MD to HTML with formatting
             const { processedHtml, sentences } = processHtmlForSpeech(htmlContent);
             setProcessedContent(processedHtml); // Display this!
             setSpeechQueue(sentences);          // Read this!
@@ -1085,7 +1091,7 @@ export default function CoursePlayer() {
                                                             ) : (
                                                                 <div
                                                                     dangerouslySetInnerHTML={{
-                                                                        __html: processedContent || (activeTopic?.content?.text ? marked.parse(activeTopic.content.text) as string : "")
+                                                                        __html: processedContent || (activeTopic?.content?.text ? marked.parse(formatRawContent(activeTopic.content.text)) as string : "")
                                                                     }}
                                                                     className="min-h-[200px]"
                                                                 />

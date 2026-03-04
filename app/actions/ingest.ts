@@ -141,7 +141,30 @@ async function processFile(filePath: string, fileName: string, category: string,
         };
     } else {
         // Standard AI Processing
-        const apiKey = process.env.GROQ_API_KEY || "";
+        // Standard AI Processing
+        // Fetch API Key from Author's Company
+        let apiKey = process.env.GROQ_API_KEY || "";
+
+        try {
+            const author = await prisma.user.findUnique({
+                where: { id: authorId },
+                include: { company: true }
+            });
+
+            if (author?.company?.apiConfig) {
+                let config = author.company.apiConfig;
+                if (typeof config === 'string') {
+                    try { config = JSON.parse(config); } catch (e) { }
+                }
+                const typedConfig = config as any;
+                if (typedConfig?.groqKey) {
+                    apiKey = typedConfig.groqKey;
+                }
+            }
+        } catch (e) {
+            console.error("Failed to fetch API key for ingest author", e);
+        }
+
         structure = await processWithGroq(text, category, apiKey);
     }
 

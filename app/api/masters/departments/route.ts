@@ -2,16 +2,16 @@ import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
 import { jwtVerify } from 'jose';
 
-const JWT_SECRET = new TextEncoder().encode(process.env.JWT_SECRET || 'fallback_secret');
+const JWT_SECRET = new TextEncoder().encode(process.env.JWT_SECRET || 'default-secret-key-change-it');
 
 async function getCurrentUser(req: NextRequest) {
-    const token = req.cookies.get('token')?.value; // Check cookie name 'token' or 'auth-token' depending on your auth setup. Middleware sets 'auth-token'??
+    const token = req.cookies.get('auth-token')?.value;
     // Middleware in step 873 checks 'auth-token'. AuthProvider usually sets 'token'.
     // Let's check both or use 'auth-token' if that's the standard.
     // AuthProvider usually sets 'token'. Middleware checks 'auth-token'. This is inconsistent? 
     // Wait, let me check AuthProvider.
     // Assuming 'token' based on previous API route I wrote.
-    const cookie = req.cookies.get('token')?.value || req.cookies.get('auth-token')?.value;
+    const cookie = req.cookies.get('auth-token')?.value;
     if (!cookie) return null;
     try {
         const { payload } = await jwtVerify(cookie, JWT_SECRET);

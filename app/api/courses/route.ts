@@ -8,11 +8,6 @@ export async function GET(req: NextRequest) {
     try {
         const courses = await prisma.course.findMany({
             include: {
-                chapters: {
-                    include: {
-                        topics: true
-                    }
-                },
                 author: {
                     select: { name: true }
                 },

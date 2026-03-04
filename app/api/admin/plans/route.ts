@@ -16,10 +16,17 @@ export async function GET(req: NextRequest) {
             });
         }
 
-        const plans = await prisma.plan.findMany({
-            include: { currency: true },
-            orderBy: { lno: 'asc' }
-        });
+        const plans: any[] = await prisma.$queryRaw`
+            SELECT p.*,
+            json_build_object('id', c.id, 'code', c.code, 'symbol', c.symbol) as currency
+            FROM "Plan" p
+            LEFT JOIN "Currency" c ON p."currencyId" = c.id
+            ORDER BY p.lno ASC
+        `;
+
+        // Normalize data if necessary (e.g. casing) - Prisma raw usually returns DB casing
+        // Assuming DB columns match model fields (camelCase or "quoted" names)
+
         return NextResponse.json(plans);
     } catch (error) {
         console.error(error);
@@ -47,8 +54,33 @@ export async function PUT(req: NextRequest) {
 
         const plan = await prisma.plan.update({
             where: { id },
-            data: body
+            data: {
+                lno: body.lno,
+                // name: body.name, // Name is unique/fixed
+                userLimit: body.userLimit,
+                tokenLimit: body.tokenLimit,
+                tokenLimitMonthly: body.tokenLimitMonthly,
+                tokenLimitYearly: body.tokenLimitYearly,
+                storageLimitMB: body.storageLimitMB,
+                singleFileLimitMB: body.singleFileLimitMB,
+                courseLimit: body.courseLimit,
+                libraryLimit: body.libraryLimit,
+                policyLimit: body.policyLimit,
+                allowTempUser: body.allowTempUser,
+                costPerMonth: body.costPerMonth,
+                costPerYear: body.costPerYear,
+                currencyId: body.currencyId,
+                // coachConfig: body.coachConfig, // Removed to avoid stale client issues
+                isActive: body.isActive
+            } as any
         });
+
+        // Force update coachConfig using raw query to bypass stale client types
+        if (body.coachConfig) {
+            const configJson = JSON.stringify(body.coachConfig);
+            await prisma.$executeRaw`UPDATE "Plan" SET "coachConfig" = ${configJson}::jsonb WHERE id = ${id}`;
+        }
+
         return NextResponse.json(plan);
     } catch (error) {
         console.error('Plan Update Error:', error);

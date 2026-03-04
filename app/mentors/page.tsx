@@ -29,7 +29,6 @@ import { useAuth } from '@/components/AuthProvider';
 export default function MentorsPage() {
     const { user } = useAuth();
     const [searchTerm, setSearchTerm] = useState('');
-    const [selectedExpertise, setSelectedExpertise] = useState('All');
 
     // UI States
     const [activeTab, setActiveTab] = useState<'browse' | 'bookings'>('browse');
@@ -49,10 +48,17 @@ export default function MentorsPage() {
         topic: ''
     });
     const [isBookingLoading, setIsBookingLoading] = useState(false);
+    const [bookingError, setBookingError] = useState<string | null>(null);
 
     // Chat State
     const [chatMessages, setChatMessages] = useState<any[]>([]);
     const [chatInput, setChatInput] = useState('');
+
+    // Bookings Filter State
+    const [bookingSearch, setBookingSearch] = useState('');
+    const [bookingStatus, setBookingStatus] = useState('All');
+    const [bookingFromDate, setBookingFromDate] = useState('');
+    const [bookingToDate, setBookingToDate] = useState('');
 
     // My Bookings State
     const [myBookings, setMyBookings] = useState<any[]>([]);
@@ -120,12 +126,15 @@ export default function MentorsPage() {
         setBookingStep(1);
         setSelectedDate(null);
         setSelectedTimeSlot(null);
+        setBookingError(null);
     };
 
     const handleBookingSubmit = async () => {
         if (!selectedDate || !selectedTimeSlot || !activeMentor) return;
 
         setIsBookingLoading(true);
+        setBookingError(null);
+
         try {
             const res = await fetch('/api/mentors/book', {
                 method: 'POST',
@@ -142,29 +151,51 @@ export default function MentorsPage() {
             });
             const data = await res.json();
 
-            if (data.success) {
+            if (res.ok && data.success) {
                 setShowBookingModal(false);
                 // Switch to bookings tab to show success
+                fetchBookings(); // Refresh bookings
                 setActiveTab('bookings');
             } else {
-                alert('Booking failed: ' + (data.error || 'Unknown error'));
+                setBookingError(data.error || 'Failed to complete booking. Please try again.');
             }
         } catch (e) {
             console.error(e);
-            alert('Booking failed');
+            setBookingError('A network error occurred while booking. Please try again.');
         } finally {
             setIsBookingLoading(false);
         }
     };
 
-    // Get unique expertise list
-    const allExpertise = ['All', ...Array.from(new Set(MENTORS.flatMap(m => m.expertise)))];
+    const handleCancelBooking = async (bookingId: string) => {
+        if (!window.confirm("Are you sure you want to cancel this mentorship session? The mentor will be notified.")) {
+            return;
+        }
+
+        try {
+            const res = await fetch('/api/mentors/cancel', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ bookingId })
+            });
+            const data = await res.json();
+
+            if (res.ok && data.success) {
+                // Refresh bookings to reflect CANCELLED status
+                fetchBookings();
+            } else {
+                alert('Failed to cancel booking: ' + (data.error || 'Unknown error'));
+            }
+        } catch (e) {
+            console.error(e);
+            alert('A network error occurred while cancelling.');
+        }
+    };
 
     const filteredMentors = MENTORS.filter(mentor => {
         const matchesSearch = mentor.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
             mentor.role.toLowerCase().includes(searchTerm.toLowerCase());
-        const matchesExpertise = selectedExpertise === 'All' || mentor.expertise.includes(selectedExpertise);
-        return matchesSearch && matchesExpertise;
+        return matchesSearch;
     });
 
     // Mock Calendar Dates (Next 14 days)
@@ -228,37 +259,15 @@ export default function MentorsPage() {
                     <>
                         {/* Filters */}
                         <div className="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm mb-10">
-                            <div className="flex flex-col md:flex-row gap-4 items-center justify-between">
-                                <div className="relative w-full md:w-96">
-                                    <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-5 w-5 text-slate-400" />
-                                    <input
-                                        type="text"
-                                        placeholder="Search by name or role..."
-                                        className="w-full pl-10 pr-4 py-3 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-purple-500 text-slate-700"
-                                        value={searchTerm}
-                                        onChange={(e) => setSearchTerm(e.target.value)}
-                                    />
-                                </div>
-
-                                <div className="flex items-center gap-2 w-full md:w-auto overflow-x-auto pb-2 md:pb-0">
-                                    <Filter className="h-5 w-5 text-slate-400 shrink-0" />
-                                    <div className="flex gap-2">
-                                        {allExpertise.slice(0, 5).map(exp => (
-                                            <button
-                                                key={exp}
-                                                onClick={() => setSelectedExpertise(exp)}
-                                                className={cn(
-                                                    "px-4 py-2 rounded-full text-sm font-medium whitespace-nowrap transition-colors border",
-                                                    selectedExpertise === exp
-                                                        ? "bg-purple-100 text-purple-700 border-purple-200"
-                                                        : "bg-slate-50 text-slate-600 border-slate-200 hover:bg-slate-100"
-                                                )}
-                                            >
-                                                {exp}
-                                            </button>
-                                        ))}
-                                    </div>
-                                </div>
+                            <div className="relative w-full max-w-2xl mx-auto">
+                                <Search className="absolute left-4 top-1/2 -translate-y-1/2 h-5 w-5 text-slate-400" />
+                                <input
+                                    type="text"
+                                    placeholder="Search by name or role..."
+                                    className="w-full pl-12 pr-4 py-3 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-purple-500 text-slate-700 shadow-sm transition-shadow"
+                                    value={searchTerm}
+                                    onChange={(e) => setSearchTerm(e.target.value)}
+                                />
                             </div>
                         </div>
 
@@ -282,6 +291,12 @@ export default function MentorsPage() {
                                                 <p className="text-slate-500 text-xs flex items-center gap-1 mt-1">
                                                     <Briefcase className="h-3 w-3" /> {mentor.company}
                                                 </p>
+                                                {mentor.email && (
+                                                    <p className="text-slate-500 text-xs flex items-center gap-1 mt-1">
+                                                        <Mail className="h-3 w-3" />
+                                                        <a href={`mailto:${mentor.email}`} className="hover:text-purple-600 hover:underline">{mentor.email}</a>
+                                                    </p>
+                                                )}
                                             </div>
                                             <div className="flex items-center gap-1 bg-yellow-50 px-2 py-1 rounded-lg border border-yellow-100">
                                                 <Star className="h-4 w-4 text-yellow-500 fill-yellow-500" />
@@ -314,8 +329,9 @@ export default function MentorsPage() {
 
                                         <div className="flex gap-3">
                                             <button
-                                                onClick={() => handleOpenChat(mentor)}
-                                                className="flex-1 py-2.5 rounded-xl border border-slate-200 text-slate-700 font-bold text-sm hover:bg-slate-50 flex items-center justify-center gap-2 transition-colors"
+                                                disabled
+                                                className="flex-1 py-2.5 rounded-xl border border-slate-200 text-slate-400 font-bold text-sm bg-slate-50 flex items-center justify-center gap-2 cursor-not-allowed"
+                                                title="Chat is temporarily disabled"
                                             >
                                                 <MessageSquare className="h-4 w-4" /> Chat
                                             </button>
@@ -334,6 +350,53 @@ export default function MentorsPage() {
                 ) : (
                     // My Bookings Tab
                     <div className="max-w-4xl mx-auto space-y-6">
+
+                        {/* Bookings Filters */}
+                        <div className="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm mb-6">
+                            <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+                                <div className="relative md:col-span-1">
+                                    <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-400" />
+                                    <input
+                                        type="text"
+                                        placeholder="Search mentor..."
+                                        className="w-full pl-9 pr-3 py-2 border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-purple-500 text-sm"
+                                        value={bookingSearch}
+                                        onChange={(e) => setBookingSearch(e.target.value)}
+                                    />
+                                </div>
+                                <div>
+                                    <select
+                                        className="w-full px-3 py-2 border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-purple-500 text-sm bg-white"
+                                        value={bookingStatus}
+                                        onChange={(e) => setBookingStatus(e.target.value)}
+                                    >
+                                        <option value="All">All Statuses</option>
+                                        <option value="CONFIRMED">Confirmed</option>
+                                        <option value="CANCELLED">Cancelled</option>
+                                        <option value="COMPLETED">Completed</option>
+                                    </select>
+                                </div>
+                                <div>
+                                    <input
+                                        type="date"
+                                        placeholder="From Date"
+                                        className="w-full px-3 py-2 border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-purple-500 text-sm text-slate-600"
+                                        value={bookingFromDate}
+                                        onChange={(e) => setBookingFromDate(e.target.value)}
+                                    />
+                                </div>
+                                <div>
+                                    <input
+                                        type="date"
+                                        placeholder="To Date"
+                                        className="w-full px-3 py-2 border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-purple-500 text-sm text-slate-600"
+                                        value={bookingToDate}
+                                        onChange={(e) => setBookingToDate(e.target.value)}
+                                    />
+                                </div>
+                            </div>
+                        </div>
+
                         {isLoadingBookings ? (
                             <div className="flex justify-center p-10"><Loader2 className="h-8 w-8 animate-spin text-purple-600" /></div>
                         ) : myBookings.length === 0 ? (
@@ -344,38 +407,108 @@ export default function MentorsPage() {
                                 <button onClick={() => setActiveTab('browse')} className="text-purple-600 font-bold hover:underline">Browse Mentors</button>
                             </div>
                         ) : (
-                            myBookings.map((booking: any) => {
-                                // Find mentor (mock lookup)
+                            myBookings.filter((booking: any) => {
                                 const mentor = MENTORS.find(m => m.id === booking.mentorId) || MENTORS[0];
-                                return (
-                                    <div key={booking.id} className="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm flex flex-col md:flex-row gap-6 items-center">
-                                        <div className="relative h-20 w-20 rounded-full overflow-hidden shrink-0">
-                                            <img src={mentor.image} alt="Mentor" className="h-full w-full object-cover" />
-                                        </div>
-                                        <div className="flex-1 text-center md:text-left">
-                                            <h3 className="font-bold text-lg text-slate-900">{mentor.name}</h3>
-                                            <div className="flex flex-wrap gap-4 mt-2 justify-center md:justify-start">
-                                                <div className="flex items-center gap-2 text-sm text-slate-600 bg-slate-50 px-3 py-1 rounded-lg">
-                                                    <Calendar className="h-4 w-4 text-purple-600" />
-                                                    {new Date(booking.date).toLocaleDateString(undefined, { weekday: 'long', month: 'short', day: 'numeric' })}
+
+                                // Text Search
+                                const matchesSearch = mentor.name.toLowerCase().includes(bookingSearch.toLowerCase());
+
+                                // Status Match
+                                const matchesStatus = bookingStatus === 'All' || booking.status === bookingStatus;
+
+                                // Date Range
+                                const bDate = new Date(booking.date);
+                                bDate.setHours(0, 0, 0, 0);
+
+                                let matchesFrom = true;
+                                if (bookingFromDate) {
+                                    const fromDt = new Date(bookingFromDate);
+                                    fromDt.setHours(0, 0, 0, 0);
+                                    matchesFrom = bDate >= fromDt;
+                                }
+
+                                let matchesTo = true;
+                                if (bookingToDate) {
+                                    const toDt = new Date(bookingToDate);
+                                    toDt.setHours(0, 0, 0, 0);
+                                    matchesTo = bDate <= toDt;
+                                }
+
+                                return matchesSearch && matchesStatus && matchesFrom && matchesTo;
+                            }).length === 0 ? (
+                                <div className="text-center p-10 bg-slate-50 rounded-2xl border border-slate-200 text-slate-500">
+                                    No bookings match your selected filters.
+                                </div>
+                            ) : (
+                                myBookings.filter((booking: any) => {
+                                    const mentor = MENTORS.find(m => m.id === booking.mentorId) || MENTORS[0];
+                                    const matchesSearch = mentor.name.toLowerCase().includes(bookingSearch.toLowerCase());
+                                    const matchesStatus = bookingStatus === 'All' || booking.status === bookingStatus;
+                                    const bDate = new Date(booking.date);
+                                    bDate.setHours(0, 0, 0, 0);
+
+                                    let matchesFrom = true;
+                                    if (bookingFromDate) {
+                                        const fromDt = new Date(bookingFromDate);
+                                        fromDt.setHours(0, 0, 0, 0);
+                                        matchesFrom = bDate >= fromDt;
+                                    }
+                                    let matchesTo = true;
+                                    if (bookingToDate) {
+                                        const toDt = new Date(bookingToDate);
+                                        toDt.setHours(0, 0, 0, 0);
+                                        matchesTo = bDate <= toDt;
+                                    }
+                                    return matchesSearch && matchesStatus && matchesFrom && matchesTo;
+                                }).map((booking: any) => {
+                                    // Find mentor (mock lookup)
+                                    const mentor = MENTORS.find(m => m.id === booking.mentorId) || MENTORS[0];
+                                    return (
+                                        <div key={booking.id} className="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm flex flex-col md:flex-row gap-6 items-center">
+                                            <div className="relative h-20 w-20 rounded-full overflow-hidden shrink-0">
+                                                <img src={mentor.image} alt="Mentor" className="h-full w-full object-cover" />
+                                            </div>
+                                            <div className="flex-1 text-center md:text-left">
+                                                <h3 className="font-bold text-lg text-slate-900">{mentor.name}</h3>
+                                                <div className="flex flex-wrap gap-4 mt-2 justify-center md:justify-start">
+                                                    <div className="flex items-center gap-2 text-sm text-slate-600 bg-slate-50 px-3 py-1 rounded-lg">
+                                                        <Calendar className="h-4 w-4 text-purple-600" />
+                                                        {new Date(booking.date).toLocaleDateString(undefined, { weekday: 'long', month: 'short', day: 'numeric' })}
+                                                    </div>
+                                                    <div className="flex items-center gap-2 text-sm text-slate-600 bg-slate-50 px-3 py-1 rounded-lg">
+                                                        <Clock className="h-4 w-4 text-purple-600" />
+                                                        {booking.timeSlot}
+                                                    </div>
                                                 </div>
-                                                <div className="flex items-center gap-2 text-sm text-slate-600 bg-slate-50 px-3 py-1 rounded-lg">
-                                                    <Clock className="h-4 w-4 text-purple-600" />
-                                                    {booking.timeSlot}
+                                            </div>
+                                            <div className="shrink-0 text-center flex flex-col items-end justify-center">
+                                                <span className={cn(
+                                                    "inline-block px-4 py-1.5 text-xs font-bold rounded-full uppercase tracking-wider mb-3",
+                                                    booking.status === 'CANCELLED'
+                                                        ? "bg-slate-100 text-slate-500"
+                                                        : "bg-green-100 text-green-700"
+                                                )}>
+                                                    {booking.status}
+                                                </span>
+
+                                                <div className="flex flex-col gap-2 items-end">
+                                                    {booking.status !== 'CANCELLED' && (
+                                                        <>
+                                                            <button className="text-sm text-purple-600 font-bold hover:underline">View Link</button>
+                                                            <button
+                                                                onClick={() => handleCancelBooking(booking.id)}
+                                                                className="text-xs text-slate-400 hover:text-red-500 hover:underline transition-colors"
+                                                            >
+                                                                Cancel Session
+                                                            </button>
+                                                        </>
+                                                    )}
                                                 </div>
                                             </div>
                                         </div>
-                                        <div className="shrink-0 text-center">
-                                            <span className="inline-block px-4 py-1.5 bg-green-100 text-green-700 text-xs font-bold rounded-full uppercase tracking-wider mb-3">
-                                                {booking.status}
-                                            </span>
-                                            <div>
-                                                <button className="text-sm text-purple-600 font-bold hover:underline">View Link</button>
-                                            </div>
-                                        </div>
-                                    </div>
-                                );
-                            })
+                                    );
+                                })
+                            )
                         )}
                     </div>
                 )}
@@ -526,7 +659,7 @@ export default function MentorsPage() {
                                     </div>
 
                                     <div>
-                                        <label className="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-1.5">Phone Number (Optional)</label>
+                                        <label className="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-1.5">Phone Number</label>
                                         <div className="relative">
                                             <Phone className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-400" />
                                             <input
@@ -534,7 +667,7 @@ export default function MentorsPage() {
                                                 value={formData.phone}
                                                 onChange={(e) => setFormData({ ...formData, phone: e.target.value })}
                                                 className="w-full pl-10 pr-4 py-2.5 bg-slate-50 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-purple-500 text-sm font-medium"
-                                                placeholder="+1 (555) 000-0000"
+                                                placeholder="+91 98765 43210"
                                             />
                                         </div>
                                     </div>
@@ -548,6 +681,16 @@ export default function MentorsPage() {
                                             placeholder="What would you like to discuss?"
                                         />
                                     </div>
+
+                                    {bookingError && (
+                                        <div className="bg-red-50 border border-red-200 text-red-700 text-sm p-3 rounded-lg flex items-start gap-2">
+                                            <X className="h-5 w-5 text-red-500 shrink-0 mt-0.5" />
+                                            <div>
+                                                <p className="font-bold">Booking Unavailable</p>
+                                                <p>{bookingError}</p>
+                                            </div>
+                                        </div>
+                                    )}
 
                                     <button
                                         onClick={handleBookingSubmit}

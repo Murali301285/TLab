@@ -33,9 +33,9 @@ import {
     X
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
-import ProfileDropdown from '@/components/ProfileDropdown';
+import MainHeader from '@/components/MainHeader';
 import { uploadChunk, finalizeUpload } from '@/app/actions/ingest';
-import { getAdminCourses, toggleCourseStatus, deleteCourse, updateCourse, getCategories } from '@/app/actions/courses';
+import { getAdminCourses, toggleCourseStatus, deleteCourse, updateCourse, getCategories, createAiCourse, getAdminCourseStats } from '@/app/actions/courses';
 import { generateContentSummaryAction, aiAssistantChatAction, generateDescriptionAction } from '@/app/actions/aiMock';
 import { generateCoverImageAction, generateDesignCoverAction } from '@/app/actions/aiCover';
 import { useRouter } from 'next/navigation';
@@ -98,6 +98,7 @@ export default function AdminUploadPage() {
 
     // View Mode: List vs Add
     const [viewMode, setViewMode] = useState<'list' | 'add'>('list');
+    const [finalThumbnailUrl, setFinalThumbnailUrl] = useState<string | null>(null);
 
     // Data States
     const [adminCourses, setAdminCourses] = useState<any[]>([]);
@@ -106,6 +107,9 @@ export default function AdminUploadPage() {
     const [selectedCategoryFilter, setSelectedCategoryFilter] = useState('All');
     const [sortOption, setSortOption] = useState('latest');
     const [assignmentFilter, setAssignmentFilter] = useState('All'); // 'All', 'Assigned', 'Not Assigned'
+    const [hasMore, setHasMore] = useState(true);
+    const [totalCourseCount, setTotalCourseCount] = useState(0);
+    const [categoryCounts, setCategoryCounts] = useState<Record<string, number>>({});
 
     // Categories State
     const [categories, setCategories] = useState<any[]>([]);
@@ -154,7 +158,7 @@ export default function AdminUploadPage() {
     const [duplicateErrorMsg, setDuplicateErrorMsg] = useState('');
 
     // AI Content Assistant
-    const [aiContextType, setAiContextType] = useState<'policy' | 'document' | 'details' | null>(null);
+    const [aiContextType, setAiContextType] = useState<'policy' | 'course' | 'library' | null>(null);
     const [chatMessages, setChatMessages] = useState<any[]>([]);
     const [chatInput, setChatInput] = useState('');
     const [isChatLoading, setIsChatLoading] = useState(false);
@@ -165,24 +169,48 @@ export default function AdminUploadPage() {
     // Ingestion Options
     const [ingestType, setIngestType] = useState<'extract' | 'summarize'>('extract');
 
-    // Pagination State
-    const [currentPage, setCurrentPage] = useState(1);
-    const [itemsPerPage, setItemsPerPage] = useState<number | 'All'>(10);
-
     // Voice Input States
     const [isListening, setIsListening] = useState(false);
     const [recognition, setRecognition] = useState<any>(null);
     const silenceTimerRef = useRef<NodeJS.Timeout | null>(null);
 
-    // Fetch Initial Data
+    const fetchCategoryStats = async () => {
+        try {
+            const res = await getAdminCourseStats();
+            if (res.success && res.data) {
+                const counts = categories.reduce((acc, cat) => {
+                    acc[cat.id] = res.data.filter((c: any) =>
+                        c.category === cat.name || c.subCategoryId === cat.id || c.subCategory?.categoryId === cat.id
+                    ).length;
+                    return acc;
+                }, {} as Record<string, number>);
+                setCategoryCounts(counts);
+            }
+        } catch (error) {
+            console.error(error);
+        }
+    };
+
     useEffect(() => {
         if (user) {
             fetchCategories();
-            if (viewMode === 'list') {
-                fetchCourses();
-            }
         }
-    }, [viewMode, user]);
+    }, [user]);
+
+    useEffect(() => {
+        if (user && categories.length > 0) {
+            fetchCategoryStats();
+        }
+    }, [user, categories]);
+
+    useEffect(() => {
+        if (user && viewMode === 'list') {
+            const delayDebounceFn = setTimeout(() => {
+                fetchCourses(true);
+            }, 300);
+            return () => clearTimeout(delayDebounceFn);
+        }
+    }, [viewMode, user, searchTerm, selectedCategoryFilter, sortOption, assignmentFilter]);
 
     useEffect(() => {
         if (chatEndRef.current) {
@@ -282,12 +310,26 @@ export default function AdminUploadPage() {
         }
     };
 
-    const fetchCourses = async () => {
-        setIsLoadingCourses(true);
+    const fetchCourses = async (reset = false) => {
+        if (reset) setIsLoadingCourses(true);
         try {
-            const res = await getAdminCourses();
+            const currentOffset = reset ? 0 : adminCourses.length;
+            const res = await getAdminCourses({
+                limit: 10,
+                offset: currentOffset,
+                search: searchTerm,
+                categoryFilter: selectedCategoryFilter,
+                assignmentFilter,
+                sortOption
+            });
             if (res.success) {
-                setAdminCourses(res.data || []);
+                if (reset) {
+                    setAdminCourses(res.data || []);
+                } else {
+                    setAdminCourses(prev => [...prev, ...(res.data || [])]);
+                }
+                setHasMore(res.hasMore || false);
+                setTotalCourseCount(res.totalCount || 0);
             } else {
                 console.error("Failed to fetch courses:", res.error);
             }
@@ -453,7 +495,24 @@ export default function AdminUploadPage() {
                 setChatMessages([...newHistory, { role: 'assistant', content: res.message }]);
                 // If it's a final structured output (mocked logic), we could set it as generated content
                 // For now, if the assistant provides a "draft", we can assume the last message is the content
+                // Auto-generated content processing
                 setAiGeneratedContent(res.message);
+
+                // Auto-Extract Title and Description if not set
+                if (res.message) {
+                    const lines = res.message.split('\n');
+                    const firstLine = lines[0].replace(/^#+\s*/, '').trim(); // Remove markdown headers
+
+                    if (firstLine && !courseTitle) {
+                        setCourseTitle(firstLine);
+                        // Try to find description (first paragraph after title)
+                        const remaining = lines.slice(1).join('\n').trim();
+                        const firstPara = remaining.split('\n\n')[0].replace(/^[#*-]+\s*/, '').trim();
+                        if (firstPara && !description) {
+                            setDescription(firstPara.substring(0, 200) + (firstPara.length > 200 ? '...' : ''));
+                        }
+                    }
+                }
                 if (res.isWarning) setAiWarning(res.message); // If warning, show it
             } else {
                 if (res.isWarning) {
@@ -488,10 +547,18 @@ export default function AdminUploadPage() {
         }
     };
 
-    const startAiWizard = (type: 'policy' | 'document' | 'details') => {
+    const startAiWizard = (type: 'policy' | 'course' | 'library') => {
         setAiContextType(type);
         setChatMessages([{ role: 'assistant', content: `I'm ready to help you create a ${type}. What are the key details or main topic?` }]);
         setAiGeneratedContent(null);
+
+        // Auto-select category based on type
+        // This ensures the rest of the form works correctly (saving, etc.)
+        const targetCat = categories.find(c => c.name.toLowerCase().includes(type));
+        if (targetCat) {
+            setSelectedCategory(targetCat.id);
+            setSelectedSubCategory(''); // Reset sub-category
+        }
     };
 
     const resetForm = () => {
@@ -633,6 +700,8 @@ export default function AdminUploadPage() {
             };
 
             // 3. Handle Content Ingestion
+            setFinalThumbnailUrl(thumbnailUrl);
+
             if (contentMode === 'ai' && aiGeneratedContent) {
                 // AI Content Flow
                 setStatus('processing');
@@ -718,7 +787,7 @@ export default function AdminUploadPage() {
                     }
 
                     setStatus('success');
-                    fetchCourses();
+                    handleRefresh();
                 } else {
                     // Check for duplicate content error
                     if (ingestRes.error && ingestRes.error.toLowerCase().includes("already exists")) {
@@ -736,7 +805,7 @@ export default function AdminUploadPage() {
                 if (!res.success) throw new Error(res.error);
 
                 setStatus('success');
-                fetchCourses();
+                handleRefresh();
             }
 
         } catch (e: any) {
@@ -747,69 +816,62 @@ export default function AdminUploadPage() {
     };
 
     // Final Approval from Review Mode
-    const handleApproveContent = () => {
-        setStatus('success');
-        fetchCourses();
+    const handleApproveContent = async () => {
+        if (contentMode === 'ai' && aiGeneratedContent) {
+            setStatus('processing');
+            try {
+                // Determine Category ID vs Name
+                // We likely have selectedCategory ID
+                const catObj = categories.find(c => c.id === selectedCategory);
+                const catName = catObj ? catObj.name : "General";
+
+                const aiData = {
+                    title: courseTitle || "AI Generated Course",
+                    description: description || "No description provided.",
+                    categoryName: catName,
+                    subCategoryId: selectedSubCategory,
+                    thumbnailUrl: generatedCoverUrl || finalThumbnailUrl,
+                    isActive: true,
+                    isCompliance: isCompliance,
+                    documentNumber: isCompliance ? documentNumber : undefined,
+                    quizQuestionCount: isCompliance ? quizQuestionCount : undefined,
+                    quizMinScore: isCompliance ? quizMinScore : undefined,
+                    aiContent: aiGeneratedContent
+                };
+
+                const res = await createAiCourse(aiData, user?.id || ''); // user.id from useAuth hook
+
+                if (res.success) {
+                    setStatus('success');
+                    handleRefresh();
+                } else {
+                    setError(res.error || "Failed to save AI course.");
+                    setStatus('review'); // Go back to review on error
+                }
+            } catch (e: any) {
+                console.error(e);
+                setError(e.message || "An unexpected error occurred.");
+                setStatus('review');
+            }
+        } else {
+            // Standard Flow (already handled or extracted)
+            setStatus('success');
+            handleRefresh();
+        }
     };
 
     // Filter & Sort Helper
-    const filteredCourses = adminCourses.filter(c => {
-        const matchesSearch = (searchTerm === '' || c.title.toLowerCase().includes(searchTerm.toLowerCase()));
-
-        // Category Filter
-        const matchesCategory = selectedCategoryFilter === 'All'
-            || c.category === categories.find(cat => cat.id === selectedCategoryFilter)?.name
-            || c.subCategory?.categoryId === selectedCategoryFilter;
-
-        // Assignment Filter
-        const enrollmentCount = c._count?.enrollments || 0;
-        let matchesAssignment = true;
-        if (assignmentFilter === 'Assigned') matchesAssignment = enrollmentCount > 0;
-        if (assignmentFilter === 'Not Assigned') matchesAssignment = enrollmentCount === 0;
-
-        return matchesSearch && matchesCategory && matchesAssignment;
-    }).sort((a, b) => {
-        const enrollA = a._count?.enrollments || 0;
-        const enrollB = b._count?.enrollments || 0;
-
-        switch (sortOption) {
-            case 'oldest': return new Date(a.createdAt || 0).getTime() - new Date(b.createdAt || 0).getTime();
-            case 'a_z': return a.title.localeCompare(b.title);
-            case 'z_a': return b.title.localeCompare(a.title);
-            case 'most_assigned': return enrollB - enrollA;
-            case 'least_assigned': return enrollA - enrollB;
-            case 'latest':
-            default:
-                return new Date(b.createdAt || 0).getTime() - new Date(a.createdAt || 0).getTime();
-        }
-    });
-
-    // Category Counts
-    const categoryCounts = categories.reduce((acc, cat) => {
-        acc[cat.id] = adminCourses.filter(c =>
-            c.category === cat.name || c.subCategory?.categoryId === cat.id
-        ).length;
-        return acc;
-    }, {} as Record<string, number>);
-    const totalCount = adminCourses.length;
-
-    // Pagination Logic
-    const totalItems = filteredCourses.length;
-    const startIndex = currentPage === 1 ? 0 : (currentPage - 1) * (itemsPerPage === 'All' ? totalItems : itemsPerPage);
-    const endIndex = itemsPerPage === 'All' ? totalItems : Math.min(startIndex + itemsPerPage, totalItems);
-    const paginatedCourses = filteredCourses.slice(startIndex, endIndex);
-
-    const totalPages = itemsPerPage === 'All' ? 1 : Math.ceil(totalItems / itemsPerPage);
-
-    const handlePageChange = (newPage: number) => {
-        if (newPage >= 1 && newPage <= totalPages) {
-            setCurrentPage(newPage);
-        }
-    };
+    const paginatedCourses = adminCourses;
+    const totalCount = totalCourseCount;
 
     const currentSubCategories = selectedCategory
         ? categories.find(c => c.id === selectedCategory)?.subCategories || []
         : [];
+
+    const handleRefresh = () => {
+        fetchCourses(true);
+        fetchCategoryStats();
+    };
 
     return (
         <div className="h-screen bg-slate-50 flex flex-col overflow-hidden relative">
@@ -824,27 +886,16 @@ export default function AdminUploadPage() {
                 )}
             </AnimatePresence>
             {/* Header */}
-            <nav className="sticky top-0 z-50 bg-slate-900 border-b border-white/10 shadow-md">
-                <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-                    <div className="flex items-center justify-between h-16">
-                        <div className="flex items-center gap-4">
-                            <Link href="/dashboard" className="p-2 -ml-2 text-slate-400 hover:text-white transition-colors">
-                                <ChevronLeft className="h-5 w-5" />
-                            </Link>
-                            <h1 className="text-xl font-bold text-white flex items-center gap-2">
-                                <Shield className="h-5 w-5 text-cyan-400" /> Content Master
-                            </h1>
-                        </div>
-                        <div className="flex items-center gap-4">
-                            <ProfileDropdown />
-                        </div>
-                    </div>
-                </div>
-            </nav>
+            {/* Header */}
+            <MainHeader />
 
             {/* Sub-Header */}
-            <div className="bg-white border-b border-slate-200 shadow-sm">
+            <div className="bg-white border-b border-slate-200 shadow-sm sticky top-16 z-40">
                 <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-4 flex flex-col md:flex-row items-center justify-between gap-4">
+                    <div className="flex items-center gap-2">
+                        <Shield className="h-6 w-6 text-cyan-600" />
+                        <h1 className="text-xl font-bold text-slate-900">Content Master</h1>
+                    </div>
                     <div className="flex bg-slate-100 p-1 rounded-full relative">
                         <button onClick={() => setViewMode('list')} className={cn("relative z-10 px-6 py-2 rounded-full text-sm font-semibold transition-all duration-300", viewMode === 'list' ? "bg-white text-slate-900 shadow-md" : "text-slate-500 hover:text-slate-700")}>Existing Content</button>
                         <button onClick={() => { setViewMode('add'); resetForm(); }} className={cn("relative z-10 px-6 py-2 rounded-full text-sm font-semibold transition-all duration-300", viewMode === 'add' ? "bg-white text-slate-900 shadow-md" : "text-slate-500 hover:text-slate-700")}>{isEditing ? 'Edit Content' : 'Add New'}</button>
@@ -925,7 +976,7 @@ export default function AdminUploadPage() {
                                             <option value="least_assigned">Least Assigned</option>
                                         </select>
                                     </div>
-                                    <button onClick={fetchCourses} className="p-2 text-slate-500 hover:text-cyan-600 border border-slate-200 rounded-lg hover:bg-slate-50 transition-colors"><RefreshCw className={cn("h-5 w-5", isLoadingCourses && "animate-spin")} /></button>
+                                    <button onClick={handleRefresh} className="p-2 text-slate-500 hover:text-cyan-600 border border-slate-200 rounded-lg hover:bg-slate-50 transition-colors"><RefreshCw className={cn("h-5 w-5", isLoadingCourses && "animate-spin")} /></button>
                                 </div>
                             </div>
                         </div>
@@ -970,45 +1021,14 @@ export default function AdminUploadPage() {
                                 </div>
                             )}
                             {/* Pagination Controls */}
-                            {filteredCourses.length > 0 && (
-                                <div className="bg-white p-4 rounded-xl border border-slate-200 mt-6 flex flex-col md:flex-row items-center justify-between gap-4">
-                                    <div className="flex items-center gap-2">
-                                        <span className="text-sm text-slate-500">Show:</span>
-                                        <select
-                                            value={itemsPerPage}
-                                            onChange={(e) => {
-                                                setItemsPerPage(e.target.value === 'All' ? 'All' : parseInt(e.target.value));
-                                                setCurrentPage(1);
-                                            }}
-                                            className="bg-slate-50 border border-slate-200 text-sm rounded-lg p-2 focus:ring-2 focus:ring-cyan-500 outline-none"
-                                        >
-                                            <option value={10}>10</option>
-                                            <option value={20}>20</option>
-                                            <option value={50}>50</option>
-                                            <option value="All">All</option>
-                                        </select>
-                                        <span className="text-sm text-slate-500 ml-2">
-                                            Showing {startIndex + 1}-{endIndex} of {totalItems}
-                                        </span>
-                                    </div>
-
-                                    <div className="flex items-center gap-2">
-                                        <button
-                                            onClick={() => handlePageChange(currentPage - 1)}
-                                            disabled={currentPage === 1}
-                                            className="p-2 border border-slate-200 rounded-lg hover:bg-slate-50 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
-                                        >
-                                            <ChevronLeft className="h-4 w-4 text-slate-600" />
-                                        </button>
-                                        <span className="text-sm font-bold text-slate-700 px-2">Page {currentPage} of {totalPages}</span>
-                                        <button
-                                            onClick={() => handlePageChange(currentPage + 1)}
-                                            disabled={currentPage === totalPages}
-                                            className="p-2 border border-slate-200 rounded-lg hover:bg-slate-50 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
-                                        >
-                                            <ArrowRight className="h-4 w-4 text-slate-600" />
-                                        </button>
-                                    </div>
+                            {hasMore && (
+                                <div className="bg-transparent mt-6 flex justify-center pb-4">
+                                    <button
+                                        onClick={() => fetchCourses(false)}
+                                        className="px-6 py-2 border-2 border-slate-300 text-slate-700 font-bold rounded-full hover:bg-slate-100 hover:text-cyan-700 transition-all flex items-center gap-2"
+                                    >
+                                        <ArrowRight className="h-4 w-4" /> Load More Courses
+                                    </button>
                                 </div>
                             )}
                         </div>
@@ -1357,92 +1377,105 @@ export default function AdminUploadPage() {
 
                                                 <div className="flex gap-0 mb-4 bg-slate-100 p-1 rounded-lg w-max">
                                                     <button onClick={() => setContentMode('upload')} className={cn("px-4 py-1.5 rounded-md text-sm font-medium transition-all", contentMode === 'upload' ? "bg-white shadow-sm text-slate-900" : "text-slate-500")}>Upload File</button>
-                                                    <button onClick={() => setContentMode('ai')} className={cn("px-4 py-1.5 rounded-md text-sm font-medium transition-all flex items-center gap-2", contentMode === 'ai' ? "bg-white shadow-sm text-purple-600" : "text-slate-500")}><Bot className="h-3 w-3" /> AI Assistant</button>
+                                                    <button
+                                                        onClick={() => setContentMode('ai')}
+                                                        className={cn(
+                                                            "px-4 py-1.5 rounded-md text-sm font-medium transition-all flex items-center gap-2",
+                                                            contentMode === 'ai' ? "bg-white shadow-sm text-purple-600" : "text-slate-500",
+                                                            "hover:text-purple-600 hover:bg-white"
+                                                        )}
+                                                        title="AI Content Assistant"
+                                                    >
+                                                        <Bot className="h-3 w-3" /> AI Assistant
+                                                    </button>
                                                 </div>
 
-                                                {contentMode === 'upload' && (
-                                                    <div className="space-y-4">
-                                                        <div className={cn("relative w-full aspect-video rounded-xl border-2 border-dashed flex flex-col items-center justify-center cursor-pointer transition-all bg-slate-50", file ? "border-cyan-500 bg-cyan-50" : "border-slate-300 hover:border-cyan-400 group")}>
-                                                            {!file && <input type="file" accept=".pdf,.docx,.mp4,.webm,.mov" onChange={handleFileChange} className="absolute inset-0 opacity-0 cursor-pointer z-10" />}
-                                                            {file ? (
-                                                                <div className="relative z-20 w-full h-full flex flex-col items-center justify-center">
-                                                                    <button onClick={(e) => { e.stopPropagation(); setFile(null); }} className="absolute top-2 right-2 p-1 bg-white rounded-full shadow-sm hover:bg-red-50 text-slate-400 hover:text-red-500 transition-colors z-30" title="Remove File">
-                                                                        <X className="h-5 w-5" />
-                                                                    </button>
-                                                                    <FileText className="h-12 w-12 text-cyan-600 mb-2" />
-                                                                    <p className="text-sm font-bold text-cyan-800 truncate max-w-[300px] mb-1">{file.name}</p>
-                                                                    <p className="text-xs text-cyan-600 font-medium">{(file.size / (1024 * 1024)).toFixed(2)} MB</p>
+                                                {
+                                                    contentMode === 'upload' && (
+                                                        <div className="space-y-4">
+                                                            <div className={cn("relative w-full aspect-video rounded-xl border-2 border-dashed flex flex-col items-center justify-center cursor-pointer transition-all bg-slate-50", file ? "border-cyan-500 bg-cyan-50" : "border-slate-300 hover:border-cyan-400 group")}>
+                                                                {!file && <input type="file" accept=".pdf,.docx,.mp4,.webm,.mov" onChange={handleFileChange} className="absolute inset-0 opacity-0 cursor-pointer z-10" />}
+                                                                {file ? (
+                                                                    <div className="relative z-20 w-full h-full flex flex-col items-center justify-center">
+                                                                        <button onClick={(e) => { e.stopPropagation(); setFile(null); }} className="absolute top-2 right-2 p-1 bg-white rounded-full shadow-sm hover:bg-red-50 text-slate-400 hover:text-red-500 transition-colors z-30" title="Remove File">
+                                                                            <X className="h-5 w-5" />
+                                                                        </button>
+                                                                        <FileText className="h-12 w-12 text-cyan-600 mb-2" />
+                                                                        <p className="text-sm font-bold text-cyan-800 truncate max-w-[300px] mb-1">{file.name}</p>
+                                                                        <p className="text-xs text-cyan-600 font-medium">{(file.size / (1024 * 1024)).toFixed(2)} MB</p>
+                                                                    </div>
+                                                                ) : <div className="text-center p-8 group-hover:scale-105 transition-transform"><UploadCloud className="h-10 w-10 text-slate-400 mx-auto mb-3" /><p className="text-sm text-slate-600 font-medium">Click to Upload Document/Video</p><p className="text-xs text-slate-400 mt-1">Supports PDF, DOCX, MP4</p></div>}
+                                                            </div>
+                                                            {/* Ingestion Type */}
+                                                            {file && (
+                                                                <div className="bg-slate-50 p-4 rounded-lg border border-slate-200">
+                                                                    <label className="block text-xs font-bold text-slate-500 uppercase tracking-wide mb-2">Ingestion settings</label>
+                                                                    <div className="flex items-center gap-6">
+                                                                        <label className="flex items-center gap-2 cursor-pointer">
+                                                                            <input type="radio" checked={ingestType === 'extract'} onChange={() => setIngestType('extract')} className="text-cyan-600 focus:ring-cyan-500" />
+                                                                            <span className="text-sm font-medium text-slate-700">Plain Extract</span>
+                                                                        </label>
+                                                                        <label className="flex items-center gap-2 cursor-pointer">
+                                                                            <input type="radio" checked={ingestType === 'summarize'} onChange={() => setIngestType('summarize')} className="text-cyan-600 focus:ring-cyan-500" />
+                                                                            <span className="text-sm font-medium text-slate-700 flex items-center gap-1"><Sparkles className="h-3 w-3 text-purple-500" /> AI Summarize (Recommended)</span>
+                                                                        </label>
+                                                                    </div>
                                                                 </div>
-                                                            ) : <div className="text-center p-8 group-hover:scale-105 transition-transform"><UploadCloud className="h-10 w-10 text-slate-400 mx-auto mb-3" /><p className="text-sm text-slate-600 font-medium">Click to Upload Document/Video</p><p className="text-xs text-slate-400 mt-1">Supports PDF, DOCX, MP4</p></div>}
+                                                            )}
                                                         </div>
-                                                        {/* Ingestion Type */}
-                                                        {file && (
-                                                            <div className="bg-slate-50 p-4 rounded-lg border border-slate-200">
-                                                                <label className="block text-xs font-bold text-slate-500 uppercase tracking-wide mb-2">Ingestion settings</label>
-                                                                <div className="flex items-center gap-6">
-                                                                    <label className="flex items-center gap-2 cursor-pointer">
-                                                                        <input type="radio" checked={ingestType === 'extract'} onChange={() => setIngestType('extract')} className="text-cyan-600 focus:ring-cyan-500" />
-                                                                        <span className="text-sm font-medium text-slate-700">Plain Extract</span>
-                                                                    </label>
-                                                                    <label className="flex items-center gap-2 cursor-pointer">
-                                                                        <input type="radio" checked={ingestType === 'summarize'} onChange={() => setIngestType('summarize')} className="text-cyan-600 focus:ring-cyan-500" />
-                                                                        <span className="text-sm font-medium text-slate-700 flex items-center gap-1"><Sparkles className="h-3 w-3 text-purple-500" /> AI Summarize (Recommended)</span>
-                                                                    </label>
-                                                                </div>
-                                                            </div>
-                                                        )}
-                                                    </div>
-                                                )}
+                                                    )
+                                                }
 
-                                                {contentMode === 'ai' && (
-                                                    <div className="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden flex flex-col min-h-[400px]">
-                                                        {/* AI Wizard or Chat */}
-                                                        {!aiContextType ? (
-                                                            <div className="flex-1 p-8 flex flex-col items-center justify-center text-center space-y-6">
-                                                                <Bot className="h-16 w-16 text-purple-200" />
-                                                                <div>
-                                                                    <h4 className="text-xl font-bold text-slate-800">AI Content Assistant</h4>
-                                                                    <p className="text-slate-500 max-w-sm mx-auto">I can generate policies, documentation, or detailed modules for you.</p>
+                                                {
+                                                    contentMode === 'ai' && (
+                                                        <div className="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden flex flex-col min-h-[400px]">
+                                                            {/* AI Wizard or Chat */}
+                                                            {!aiContextType ? (
+                                                                <div className="flex-1 p-8 flex flex-col items-center justify-center text-center space-y-6">
+                                                                    <Bot className="h-16 w-16 text-purple-200" />
+                                                                    <div>
+                                                                        <h4 className="text-xl font-bold text-slate-800">AI Content Assistant</h4>
+                                                                        <p className="text-slate-500 max-w-sm mx-auto">I can generate policies, documentation, or detailed modules for you.</p>
+                                                                    </div>
+                                                                    <div className="grid grid-cols-1 md:grid-cols-3 gap-4 w-full">
+                                                                        <button onClick={() => startAiWizard('policy')} className="p-4 border border-slate-200 rounded-xl hover:border-purple-500 hover:bg-purple-50 transition-all text-left group">
+                                                                            <Shield className="h-8 w-8 text-purple-500 mb-2 group-hover:scale-110 transition-transform" />
+                                                                            <h5 className="font-bold text-slate-800">Policy</h5>
+                                                                            <p className="text-xs text-slate-500">NDA, Compliance, Audit...</p>
+                                                                        </button>
+                                                                        <button onClick={() => startAiWizard('course')} className="p-4 border border-slate-200 rounded-xl hover:border-blue-500 hover:bg-blue-50 transition-all text-left group">
+                                                                            <Book className="h-8 w-8 text-blue-500 mb-2 group-hover:scale-110 transition-transform" />
+                                                                            <h5 className="font-bold text-slate-800">Course</h5>
+                                                                            <p className="text-xs text-slate-500">Modules, Chapters, Tests...</p>
+                                                                        </button>
+                                                                        <button onClick={() => startAiWizard('library')} className="p-4 border border-slate-200 rounded-xl hover:border-green-500 hover:bg-green-50 transition-all text-left group">
+                                                                            <Sparkles className="h-8 w-8 text-green-500 mb-2 group-hover:scale-110 transition-transform" />
+                                                                            <h5 className="font-bold text-slate-800">Library</h5>
+                                                                            <p className="text-xs text-slate-500">Articles, Concepts, Research...</p>
+                                                                        </button>
+                                                                    </div>
                                                                 </div>
-                                                                <div className="grid grid-cols-1 md:grid-cols-3 gap-4 w-full">
-                                                                    <button onClick={() => startAiWizard('policy')} className="p-4 border border-slate-200 rounded-xl hover:border-purple-500 hover:bg-purple-50 transition-all text-left group">
-                                                                        <Shield className="h-8 w-8 text-purple-500 mb-2 group-hover:scale-110 transition-transform" />
-                                                                        <h5 className="font-bold text-slate-800">Policy</h5>
-                                                                        <p className="text-xs text-slate-500">NDA, Compliance, Audit...</p>
-                                                                    </button>
-                                                                    <button onClick={() => startAiWizard('document')} className="p-4 border border-slate-200 rounded-xl hover:border-blue-500 hover:bg-blue-50 transition-all text-left group">
-                                                                        <Book className="h-8 w-8 text-blue-500 mb-2 group-hover:scale-110 transition-transform" />
-                                                                        <h5 className="font-bold text-slate-800">Document</h5>
-                                                                        <p className="text-xs text-slate-500">Manuals, Guides, Books...</p>
-                                                                    </button>
-                                                                    <button onClick={() => startAiWizard('details')} className="p-4 border border-slate-200 rounded-xl hover:border-green-500 hover:bg-green-50 transition-all text-left group">
-                                                                        <Sparkles className="h-8 w-8 text-green-500 mb-2 group-hover:scale-110 transition-transform" />
-                                                                        <h5 className="font-bold text-slate-800">Details</h5>
-                                                                        <p className="text-xs text-slate-500">Productivity, Concepts...</p>
-                                                                    </button>
-                                                                </div>
-                                                            </div>
-                                                        ) : (
-                                                            <div className="flex flex-col h-[500px]">
-                                                                {/* Header */}
-                                                                <div className="p-3 border-b border-slate-100 bg-slate-50 flex justify-between items-center">
-                                                                    <span className="text-xs font-bold text-slate-500 uppercase tracking-wider flex items-center gap-2">
-                                                                        <Bot className="h-4 w-4" /> AI Assistant • {aiContextType} Mode
-                                                                    </span>
-                                                                    <button onClick={() => setAiContextType(null)} className="text-xs text-slate-400 hover:text-red-500">Reset</button>
-                                                                </div>
-                                                                {/* Messages */}
-                                                                <div className="flex-1 overflow-y-auto p-4 space-y-4 bg-slate-50/50">
-                                                                    {chatMessages.map((msg, idx) => (
-                                                                        <div key={idx} className={cn("flex w-full mb-4", msg.role === 'user' ? "justify-end" : "justify-start")}>
-                                                                            <div className={cn("max-w-[85%] rounded-2xl p-4 text-sm",
-                                                                                msg.role === 'user' ? "bg-purple-600 text-white rounded-tr-none shadow-md" : "bg-white border border-slate-200 text-slate-800 rounded-tl-none shadow-sm",
-                                                                                msg.isWarning && "border-amber-400 bg-amber-50 text-amber-900"
-                                                                            )}>
-                                                                                {msg.isWarning && <div className="flex items-center gap-2 mb-2 font-bold text-amber-700"><AlertTriangle className="h-4 w-4" /> Out of Context</div>}
-                                                                                {msg.role === 'assistant' && msg.content.includes('#') ? (
-                                                                                    <div className="prose prose-sm prose-slate max-w-none">
-                                                                                        <style jsx>{`
+                                                            ) : (
+                                                                <div className="flex flex-col h-[500px]">
+                                                                    {/* Header */}
+                                                                    <div className="p-3 border-b border-slate-100 bg-slate-50 flex justify-between items-center">
+                                                                        <span className="text-xs font-bold text-slate-500 uppercase tracking-wider flex items-center gap-2">
+                                                                            <Bot className="h-4 w-4" /> AI Assistant • {aiContextType} Mode
+                                                                        </span>
+                                                                        <button onClick={() => setAiContextType(null)} className="text-xs text-slate-400 hover:text-red-500">Reset</button>
+                                                                    </div>
+                                                                    {/* Messages */}
+                                                                    <div className="flex-1 overflow-y-auto p-4 space-y-4 bg-slate-50/50">
+                                                                        {chatMessages.map((msg, idx) => (
+                                                                            <div key={idx} className={cn("flex w-full mb-4", msg.role === 'user' ? "justify-end" : "justify-start")}>
+                                                                                <div className={cn("max-w-[85%] rounded-2xl p-4 text-sm",
+                                                                                    msg.role === 'user' ? "bg-purple-600 text-white rounded-tr-none shadow-md" : "bg-white border border-slate-200 text-slate-800 rounded-tl-none shadow-sm",
+                                                                                    msg.isWarning && "border-amber-400 bg-amber-50 text-amber-900"
+                                                                                )}>
+                                                                                    {msg.isWarning && <div className="flex items-center gap-2 mb-2 font-bold text-amber-700"><AlertTriangle className="h-4 w-4" /> Out of Context</div>}
+                                                                                    {msg.role === 'assistant' && msg.content.includes('#') ? (
+                                                                                        <div className="prose prose-sm prose-slate max-w-none">
+                                                                                            <style jsx>{`
                                                                                             .prose h1 { @apply text-2xl font-black text-slate-900 mb-3 pb-2 border-b-2 border-purple-400; }
                                                                                             .prose h2 { @apply text-xl font-bold text-slate-800 mt-6 mb-2; }
                                                                                             .prose h2::before { content: "▸"; @apply text-purple-600 mr-2; }
@@ -1459,64 +1492,64 @@ export default function AdminUploadPage() {
                                                                                             .prose hr { @apply my-4 border-t-2 border-slate-200; }
                                                                                             .prose code { @apply bg-slate-100 text-purple-700 px-1 rounded text-xs; }
                                                                                         `}</style>
-                                                                                        <ReactMarkdown remarkPlugins={[remarkGfm]}>{msg.content}</ReactMarkdown>
-                                                                                    </div>
-                                                                                ) : (
-                                                                                    <div className="whitespace-pre-wrap">{msg.content}</div>
-                                                                                )}
+                                                                                            <ReactMarkdown remarkPlugins={[remarkGfm]}>{msg.content}</ReactMarkdown>
+                                                                                        </div>
+                                                                                    ) : (
+                                                                                        <div className="whitespace-pre-wrap">{msg.content}</div>
+                                                                                    )}
+                                                                                </div>
                                                                             </div>
-                                                                        </div>
-                                                                    ))}
-                                                                    {isChatLoading && (
-                                                                        <div className="flex justify-start w-full"><div className="bg-white border border-slate-200 rounded-2xl p-4 rounded-tl-none shadow-sm"><Loader2 className="h-5 w-5 animate-spin text-purple-500" /></div></div>
-                                                                    )}
-                                                                    <div ref={chatEndRef} />
-                                                                </div>
-                                                                {/* Input */}
-                                                                <div className="p-4 bg-white border-t border-slate-200">
-                                                                    <div className="flex gap-2">
-                                                                        <button title="Upload Reference" className="p-2 border border-slate-200 rounded-lg hover:bg-slate-50 text-slate-500"><UploadCloud className="h-5 w-5" /></button>
-                                                                        <button
-                                                                            onClick={toggleVoiceInput}
-                                                                            title={isListening ? "Stop Recording" : "Voice Input"}
-                                                                            className={cn(
-                                                                                "p-2 border rounded-lg transition-all",
-                                                                                isListening
-                                                                                    ? "bg-red-500 text-white border-red-600 animate-pulse"
-                                                                                    : "border-slate-200 hover:bg-purple-50 text-purple-600"
-                                                                            )}
-                                                                        >
-                                                                            {isListening ? <MicOff className="h-5 w-5" /> : <Mic className="h-5 w-5" />}
-                                                                        </button>
-                                                                        <input
-                                                                            type="text"
-                                                                            value={chatInput}
-                                                                            onChange={(e) => setChatInput(e.target.value)}
-                                                                            onKeyDown={(e) => e.key === 'Enter' && handleSendMessage()}
-                                                                            placeholder={isListening ? "Listening... speak now" : "Type your message..."}
-                                                                            className="flex-1 border border-slate-200 rounded-lg px-4 focus:ring-2 focus:ring-purple-500 outline-none"
-                                                                            disabled={isListening}
-                                                                        />
-                                                                        <button
-                                                                            id="voice-send-btn"
-                                                                            onClick={handleSendMessage}
-                                                                            disabled={!chatInput.trim() || isChatLoading}
-                                                                            className="p-2 bg-purple-600 text-white rounded-lg hover:bg-purple-700 disabled:opacity-50 transition-all"
-                                                                        >
-                                                                            <ArrowRight className="h-5 w-5" />
-                                                                        </button>
+                                                                        ))}
+                                                                        {isChatLoading && (
+                                                                            <div className="flex justify-start w-full"><div className="bg-white border border-slate-200 rounded-2xl p-4 rounded-tl-none shadow-sm"><Loader2 className="h-5 w-5 animate-spin text-purple-500" /></div></div>
+                                                                        )}
+                                                                        <div ref={chatEndRef} />
                                                                     </div>
-                                                                    {isListening && (
-                                                                        <div className="mt-2 text-xs text-center text-purple-600 flex items-center justify-center gap-2">
-                                                                            <div className="w-2 h-2 bg-red-500 rounded-full animate-pulse"></div>
-                                                                            Recording... Will auto-send after 2 seconds of silence
+                                                                    {/* Input */}
+                                                                    <div className="p-4 bg-white border-t border-slate-200">
+                                                                        <div className="flex gap-2">
+                                                                            <button
+                                                                                onClick={toggleVoiceInput}
+                                                                                title={isListening ? "Stop Recording" : "Voice Input"}
+                                                                                className={cn(
+                                                                                    "p-2 border rounded-lg transition-all",
+                                                                                    isListening
+                                                                                        ? "bg-red-500 text-white border-red-600 animate-pulse"
+                                                                                        : "border-slate-200 hover:bg-purple-50 text-purple-600"
+                                                                                )}
+                                                                            >
+                                                                                {isListening ? <MicOff className="h-5 w-5" /> : <Mic className="h-5 w-5" />}
+                                                                            </button>
+                                                                            <input
+                                                                                type="text"
+                                                                                value={chatInput}
+                                                                                onChange={(e) => setChatInput(e.target.value)}
+                                                                                onKeyDown={(e) => e.key === 'Enter' && handleSendMessage()}
+                                                                                placeholder={isListening ? "Listening... speak now" : "Type your message..."}
+                                                                                className="flex-1 border border-slate-200 rounded-lg px-4 focus:ring-2 focus:ring-purple-500 outline-none"
+                                                                                disabled={isListening}
+                                                                            />
+                                                                            <button
+                                                                                id="voice-send-btn"
+                                                                                onClick={handleSendMessage}
+                                                                                disabled={!chatInput.trim() || isChatLoading}
+                                                                                className="p-2 bg-purple-600 text-white rounded-lg hover:bg-purple-700 disabled:opacity-50 transition-all"
+                                                                            >
+                                                                                <ArrowRight className="h-5 w-5" />
+                                                                            </button>
                                                                         </div>
-                                                                    )}
+                                                                        {isListening && (
+                                                                            <div className="mt-2 text-xs text-center text-purple-600 flex items-center justify-center gap-2">
+                                                                                <div className="w-2 h-2 bg-red-500 rounded-full animate-pulse"></div>
+                                                                                Recording... Will auto-send after 2 seconds of silence
+                                                                            </div>
+                                                                        )}
+                                                                    </div>
                                                                 </div>
-                                                            </div>
-                                                        )}
-                                                    </div>
-                                                )}
+                                                            )}
+                                                        </div>
+                                                    )
+                                                }
                                             </div>
                                         )}
 

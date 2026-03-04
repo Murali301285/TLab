@@ -301,52 +301,45 @@ export interface Mentor {
     availability: string;
     image: string;
     rating: number;
+    email?: string;
 }
 
 export const MENTORS: Mentor[] = [
     {
         id: 'm1',
-        name: 'Dr. Sarah Chen',
-        role: 'Senior Data Scientist',
-        company: 'TechCorp AI',
-        expertise: ['Machine Learning', 'Python', 'Data Strategy'],
-        bio: 'Ph.D. in Computer Science with 10+ years of experience in building scalable AI systems. Passionate about mentoring upcoming data scientists.',
+        name: 'Prof CB Mohan',
+        role: 'Professor, Coach and Mentor',
+        company: 'Gaaia3 Technologies & Ventures Private Limited',
+        expertise: ['Strategic Management', 'International Business', 'Leadership'],
+        bio: 'Global Professor and Leadership Coach specializing in Strategic Management and International Business. Helps corporate professionals reinvent themselves and provides strategic mentorship to startups and MSMEs.',
         availability: 'Mon, Wed, Fri (Morning)',
-        image: 'https://images.unsplash.com/photo-1573496359142-b8d87734a5a2?w=400&q=80',
-        rating: 4.9
+        image: '/cb_mohan.png',
+        rating: 5.0,
+        email: 'mohan.cb@gaaia3.com'
     },
     {
         id: 'm2',
-        name: 'James Wilson',
-        role: 'VP of Sales',
-        company: 'Global Growth Inc.',
-        expertise: ['B2B Sales', 'Negotiation', 'Team Leadership'],
-        bio: 'Veteran sales leader who has closed over $50M in enterprise deals. Expert in the BATNA principle and strategic negotiation.',
+        name: 'Satish Anantharaman',
+        role: 'Management Consultant',
+        company: 'Gaaia3 Technologies & Ventures Private Limited',
+        expertise: ['Electric Vehicle Integration', 'Strategic Sourcing', 'Global Product Development', 'Supply Chain Management'],
+        bio: 'An MBA with a strong engineering background and a track record of leading global engineering projects, supply chain management, and operations in high-pressure environments. Well-versed in startup operations and investor interaction.',
         availability: 'Tue, Thu (Afternoon)',
-        image: 'https://images.unsplash.com/photo-1560250097-0b93528c311a?w=400&q=80',
-        rating: 4.8
+        image: '/satish_anantharaman.png',
+        rating: 4.8,
+        email: 'satish.a@gaaia3.com'
     },
     {
         id: 'm3',
-        name: 'Elena Rodriguez',
-        role: 'Chief HR Officer',
-        company: 'PeopleFirst',
-        expertise: ['HR Policy', 'Conflict Resolution', 'Career Development'],
-        bio: 'Specializes in creating inclusive workplace cultures and helping professionals navigate their career paths.',
+        name: 'Murali',
+        role: 'AI Consultant',
+        company: 'Gaaia3 Technologies & Ventures Private Limited',
+        expertise: ['Software Architecture & System Design', 'AI & Agents', 'Cloud Infrastructure', 'N8N Automation'],
+        bio: 'Consultant Software Architect with over 17 years of experience. Specializes in end-to-end system design, creating platform-independent solutions for Azure and AWS, and translating complex business requirements into robust technical realities.',
         availability: 'Weekends',
-        image: 'https://images.unsplash.com/photo-1580489944761-15a19d654956?w=400&q=80',
-        rating: 5.0
-    },
-    {
-        id: 'm4',
-        name: 'Michael Chang',
-        role: 'Cybersecurity Consultant',
-        company: 'SecureNet',
-        expertise: ['Network Security', 'Ethical Hacking', 'Compliance'],
-        bio: 'Certified ethical hacker helping organizations secure their digital assets. Teaches practical cybersecurity awareness.',
-        availability: 'Mon - Fri (Evening)',
-        image: 'https://images.unsplash.com/photo-1472099645785-5658abf4ff4e?w=400&q=80',
-        rating: 4.7
+        image: '/murali.png',
+        rating: 5.0,
+        email: 'murali.k@gaaia3.com'
     }
 ];
 

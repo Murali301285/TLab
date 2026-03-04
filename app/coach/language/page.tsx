@@ -6,8 +6,8 @@ import { useRouter } from 'next/navigation';
 import { ChevronLeft, Send, Sparkles, Languages, Loader2, Bot, User, Mic, Volume2, Play, Pause, Settings, LogOut, Globe, MapPin, ArrowRight, ToggleLeft, ToggleRight, Check } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { useVoiceInput } from '@/hooks/useVoiceInput';
-import { speakText, VoicePreferences } from '@/utils/voiceUtils';
-
+import { speakText, VoicePreferences, cancelSpeech } from '@/utils/voiceUtils';
+import CoachVoiceSettings from '@/components/CoachVoiceSettings';
 
 // --- Constants ---
 const MODES = [
@@ -46,7 +46,7 @@ export default function LanguageCoachPage() {
     // Audio State
     const [playbackSpeed, setPlaybackSpeed] = useState(1);
     const [speakingLineIdx, setSpeakingLineIdx] = useState<number | null>(null);
-    const voicePrefs: VoicePreferences = { gender: 'female', accent: 'IN' };
+    const [voicePrefs, setVoicePrefs] = useState<VoicePreferences>({ gender: 'female', accent: 'IN' });
 
     const { isListening, startListening, stopListening } = useVoiceInput({
         onSpeechEnd: (text) => {
@@ -55,6 +55,9 @@ export default function LanguageCoachPage() {
         },
         silenceTimeout: 2000
     });
+    const [learningType, setLearningType] = useState<'casual' | 'formal'>('casual');
+
+    const [loadingTTSIdx, setLoadingTTSIdx] = useState<number | null>(null);
 
     const messagesEndRef = useRef<HTMLDivElement>(null);
 
@@ -65,13 +68,6 @@ export default function LanguageCoachPage() {
     useEffect(() => { scrollToBottom(); }, [messages]);
 
     // To fix the userId issue, we'll try to get it from a simple API call or local storage
-    // But for this patch, we'll make the API route more lenient or try to fetch 'me'.
-    // Let's assume we can query /api/users/me (if it existed) or just rely on the server to handle session cookie.
-    // Since we don't have a robust Auth context here, I will try to use a valid ID from the mockData or handle the error gracefully.
-    // BETTER FIX: The API `app/api/coach/session/route.ts` should try to find a user if not provided or create a guest.
-    // But since `User` relation is required, we need a Real ID.
-    // I will add a fetch to get the first student user as a fallback in this component for DEMO purposes.
-
     const [currentUserId, setCurrentUserId] = useState<string>('');
 
     useEffect(() => {
@@ -155,20 +151,6 @@ export default function LanguageCoachPage() {
     };
 
     const getSpeechLanguage = () => {
-        // If we want the AI to speak in the Target Language (Learning English -> French)
-        // OR in the Regional Language (Learning English -> Hindi explanation)
-        // The AI output is usually mixed. But if `config.outputLang` is 'Target', it is purely the target/regional lang.
-
-        // HOWEVER, the `sendMessage` loop below handles the reply.
-        // If the mode is 'Regional', the AI is acting as a "Hindi Coach" helping with English? 
-        // Or "English Coach" explaining in Hindi?
-        // Usually: user speaks English, AI replies in Hindi/Mixed.
-
-        // Simpler Logic: 
-        // If we are in Regional Mode, let's assume the default "Assistant" voice should match the regional language 
-        // IF the text is not English. But the AI might mix "English" terms.
-        // `voiceUtils` handles fallback. If we say "Hi-IN", it often reads English okay too.
-
         if (config.category === 'Regional' && config.language) return config.language;
         if (mode === 'TRANSLATE' && config.targetLang) return config.targetLang;
         if (config.category === 'International' && config.language) return config.language;
@@ -205,7 +187,12 @@ export default function LanguageCoachPage() {
                         voicePrefs,
                         () => { },
                         () => { },
-                        getSpeechLanguage()
+                        getSpeechLanguage(),
+                        1.0,
+                        (isLoading) => {
+                            if (isLoading) setLoadingTTSIdx(messages.length); // Assuming last item
+                            else setLoadingTTSIdx(null);
+                        }
                     );
                 }
             }
@@ -217,18 +204,21 @@ export default function LanguageCoachPage() {
     };
 
     const handleSpeak = (text: string, idx: number) => {
-        window.speechSynthesis.cancel();
+        cancelSpeech();
         if (speakingLineIdx === idx) {
             setSpeakingLineIdx(null);
+            setLoadingTTSIdx(null);
             return;
         }
 
         speakText(
             text,
             voicePrefs,
-            () => setSpeakingLineIdx(idx),
-            () => setSpeakingLineIdx(null),
-            getSpeechLanguage()
+            () => { setLoadingTTSIdx(null); setSpeakingLineIdx(idx); },
+            () => { setSpeakingLineIdx(null); setLoadingTTSIdx(null); },
+            getSpeechLanguage(),
+            playbackSpeed,
+            (isLoading) => setLoadingTTSIdx(isLoading ? idx : null)
         );
     };
 
@@ -405,10 +395,12 @@ export default function LanguageCoachPage() {
                 </div>
 
                 <div className="flex items-center gap-2">
+                    <CoachVoiceSettings state={voicePrefs} setState={setVoicePrefs} />
+
                     <select
                         value={playbackSpeed}
                         onChange={e => setPlaybackSpeed(parseFloat(e.target.value))}
-                        className="text-xs font-bold bg-slate-100 border-none rounded-lg py-2 px-3 focus:ring-0 cursor-pointer"
+                        className="text-xs font-bold bg-slate-100 border-none rounded-lg py-1 px-2 h-8 focus:ring-0 cursor-pointer"
                     >
                         <option value="0.75">0.75x</option>
                         <option value="1">1.0x</option>
@@ -435,11 +427,12 @@ export default function LanguageCoachPage() {
                                 {msg.content}
                             </div>
                             <button
+                                disabled={loadingTTSIdx !== null && loadingTTSIdx !== idx}
                                 onClick={() => handleSpeak(msg.content, idx)}
-                                className={`text-xs flex items-center gap-1 hover:underline ${msg.role === 'user' ? 'text-slate-400 ml-auto' : 'text-blue-500'}`}
+                                className={`text-xs flex items-center gap-1 hover:underline disabled:opacity-50 disabled:cursor-not-allowed ${msg.role === 'user' ? 'text-slate-400 ml-auto' : 'text-blue-500'}`}
                             >
-                                {speakingLineIdx === idx ? <Pause className="h-3 w-3" /> : <Play className="h-3 w-3" />}
-                                {speakingLineIdx === idx ? 'Stop' : 'Play'}
+                                {loadingTTSIdx === idx ? <Loader2 className="h-3 w-3 animate-spin" /> : speakingLineIdx === idx ? <Pause className="h-3 w-3" /> : <Play className="h-3 w-3" />}
+                                {loadingTTSIdx === idx ? 'Loading...' : speakingLineIdx === idx ? 'Stop' : 'Play'}
                             </button>
                         </div>
                     </div>
@@ -509,10 +502,6 @@ export default function LanguageCoachPage() {
             </div>
         </div>
     );
-
-    // --- Speech Recognition Logic ---
-    // --- Speech Recognition Logic ---
-    // Replaced by useVoiceInput hook
 
     return (
         <div className="min-h-screen bg-slate-50 font-sans">

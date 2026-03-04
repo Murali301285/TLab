@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { Groq } from 'groq-sdk';
 import { PrismaClient } from '@prisma/client';
+import { getGroqKeyForUser } from '@/lib/ai-config';
 
 const prisma = new PrismaClient();
 
@@ -8,7 +9,7 @@ export async function POST(req: NextRequest) {
     try {
         const { message, topic, context, history, sessionId } = await req.json();
 
-        const apiKey = process.env.GROQ_API_KEY;
+        const { apiKey } = await getGroqKeyForUser(req);
         if (!apiKey) {
             return NextResponse.json({ error: "Missing API Key" }, { status: 500 });
         }

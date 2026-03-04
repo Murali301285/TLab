@@ -3,42 +3,330 @@
 import { prisma } from '@/lib/prisma';
 import { revalidatePath } from 'next/cache';
 
-export async function getAdminCourses() {
+interface AdminCourseParams {
+    limit?: number;
+    offset?: number;
+    search?: string;
+    categoryFilter?: string;
+    assignmentFilter?: string;
+    sortOption?: string;
+}
+
+export async function getAdminCourses(params?: AdminCourseParams) {
     try {
-        const courses = await prisma.course.findMany({
-            orderBy: { createdAt: 'desc' },
-            include: {
-                _count: { select: { enrollments: true, chapters: true } },
-                subCategory: { include: { category: true } }
+        const {
+            limit = 10,
+            offset = 0,
+            search = '',
+            categoryFilter = 'All',
+            assignmentFilter = 'All',
+            sortOption = 'latest'
+        } = params || {};
+
+        const whereClause: any = {};
+
+        if (search) {
+            whereClause.OR = [
+                { title: { contains: search, mode: 'insensitive' } },
+                { description: { contains: search, mode: 'insensitive' } }
+            ];
+        }
+
+        if (categoryFilter !== 'All') {
+            const categoryObj = await prisma.category.findUnique({ where: { id: categoryFilter } });
+            const subCategories = await prisma.subCategory.findMany({ where: { categoryId: categoryFilter } });
+
+            const categoryConditions: any[] = [
+                { subCategoryId: { in: subCategories.map(s => s.id) } }
+            ];
+            if (categoryObj) {
+                categoryConditions.push({ category: categoryObj.name });
+            }
+
+            if (whereClause.OR) {
+                whereClause.AND = [
+                    { OR: whereClause.OR },
+                    { OR: categoryConditions }
+                ];
+                delete whereClause.OR;
+            } else {
+                whereClause.OR = categoryConditions;
+            }
+        }
+
+        if (assignmentFilter === 'Assigned') {
+            whereClause.enrollments = { some: {} };
+        } else if (assignmentFilter === 'Not Assigned') {
+            whereClause.enrollments = { none: {} };
+        }
+
+        let orderByClause: any = { createdAt: 'desc' };
+
+        switch (sortOption) {
+            case 'oldest': orderByClause = { createdAt: 'asc' }; break;
+            case 'a_z': orderByClause = { title: 'asc' }; break;
+            case 'z_a': orderByClause = { title: 'desc' }; break;
+            case 'most_assigned': orderByClause = { enrollments: { _count: 'desc' } }; break;
+            case 'least_assigned': orderByClause = { enrollments: { _count: 'asc' } }; break;
+            case 'latest':
+            default:
+                orderByClause = { createdAt: 'desc' };
+        }
+
+        const [courses, totalCount] = await prisma.$transaction([
+            prisma.course.findMany({
+                where: whereClause,
+                orderBy: orderByClause,
+                take: limit === -1 ? undefined : limit,
+                skip: offset,
+                include: {
+                    _count: { select: { enrollments: true, chapters: true } },
+                    subCategory: { include: { category: true } }
+                }
+            }),
+            prisma.course.count({ where: whereClause })
+        ]);
+
+        return {
+            success: true,
+            data: courses,
+            totalCount,
+            hasMore: limit !== -1 ? (offset + courses.length < totalCount) : false
+        };
+    } catch (error: any) {
+        return { success: false, error: error.message };
+    }
+}
+
+export async function getAdminCourseStats() {
+    try {
+        const stats = await prisma.course.findMany({
+            select: {
+                category: true,
+                subCategoryId: true,
+                subCategory: {
+                    select: { categoryId: true }
+                }
             }
         });
-        return { success: true, data: courses };
+        return { success: true, data: stats };
     } catch (error: any) {
+        return { success: false, error: error.message };
+    }
+}
+
+export async function getDashboardData(userId: string, isAdmin: boolean = false) {
+    try {
+        const uid = userId || "u1";
+        const myCourses: any[] = [];
+        const complianceDocs: any[] = [];
+        const recentCourses: any[] = [];
+
+        // 1. Fetch Recent Learning for everyone
+        const progressList = await prisma.userProgress.findMany({
+            where: { userId: uid },
+            orderBy: { lastAccessed: 'desc' },
+            take: 50,
+            select: {
+                lastAccessed: true,
+                topic: {
+                    select: {
+                        chapter: {
+                            select: {
+                                course: {
+                                    select: {
+                                        id: true,
+                                        title: true,
+                                        description: true,
+                                        thumbnail: true,
+                                        category: true,
+                                        isCompliance: true,
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        });
+
+        const seenCourses = new Set<string>();
+        for (const p of progressList) {
+            // @ts-ignore
+            const course = p.topic?.chapter?.course;
+            if (course && !seenCourses.has(course.id) && !course.isCompliance) {
+                seenCourses.add(course.id);
+                recentCourses.push({
+                    ...course,
+                    lastAccessed: p.lastAccessed
+                });
+            }
+            if (recentCourses.length >= 3) break;
+        }
+
+        // If the user is an admin and that's all they need, return early
+        if (isAdmin) {
+            return { success: true, data: { myCourses, complianceDocs, recentCourses } };
+        }
+
+        // 2. Fetch all enrollments for this user (both regular and compliance)
+        const enrollments = await prisma.enrollment.findMany({
+            where: { userId: uid },
+            include: {
+                course: {
+                    include: {
+                        chapters: {
+                            include: {
+                                topics: { select: { id: true } }
+                            }
+                        }
+                    }
+                }
+            }
+        });
+
+        if (enrollments.length === 0) {
+            return { success: true, data: { myCourses, complianceDocs, recentCourses } };
+        }
+
+        // 3. Fetch all progress for these topics
+        const allCourseTopicIds = enrollments.flatMap(e =>
+            e.course.chapters.flatMap(c => c.topics.map(t => t.id))
+        );
+
+        const userProgress = await prisma.userProgress.findMany({
+            where: {
+                userId: uid,
+                topicId: { in: allCourseTopicIds }
+            },
+            select: {
+                topicId: true,
+                completed: true,
+                lastAccessed: true
+            }
+        });
+
+        const completedTopicIds = new Set(userProgress.filter(p => p.completed).map(p => p.topicId));
+
+        const progressMap = new Map();
+        userProgress.forEach(p => progressMap.set(p.topicId, p));
+
+        // 4. Fetch ALL Quiz Attempts for these courses
+        const courseIds = enrollments.map(e => e.course.id);
+        const quizAttempts = await prisma.quizAttempt.findMany({
+            where: {
+                userId: uid,
+                courseId: { in: courseIds }
+            },
+            select: {
+                courseId: true,
+                score: true
+            }
+        });
+
+        const bestQuizScores = new Map<string, number>();
+        quizAttempts.forEach(qa => {
+            if (!qa.courseId) return;
+            const current = bestQuizScores.get(qa.courseId) || 0;
+            if (qa.score > current) {
+                bestQuizScores.set(qa.courseId, qa.score);
+            }
+        });
+
+        for (const e of enrollments) {
+            const isCompliance = e.course.isCompliance;
+            const allTopics = e.course.chapters.flatMap(c => c.topics);
+            const totalTopics = allTopics.length;
+            const completedCount = allTopics.filter(t => completedTopicIds.has(t.id)).length;
+            const progressPct = totalTopics > 0 ? (completedCount / totalTopics) * 100 : 0;
+
+            if (!isCompliance) {
+                // Regular course
+                myCourses.push({
+                    ...e.course,
+                    totalTopics,
+                    progress: Math.round(progressPct),
+                    enrolledAt: e.assignedAt,
+                    assignedAt: e.assignedAt,
+                    expiresAt: e.expiresAt,
+                    completedAt: e.completedAt,
+                    totalTime: e.totalTime,
+                    lastActiveAt: e.lastActiveAt,
+                    status: e.status
+                });
+            } else {
+                // Compliance course
+                let lastActiveTopicId = null;
+                let maxDate = 0;
+
+                allTopics.forEach(t => {
+                    const p = progressMap.get(t.id);
+                    if (p && p.lastAccessed) {
+                        const time = new Date(p.lastAccessed).getTime();
+                        if (time > maxDate) {
+                            maxDate = time;
+                            lastActiveTopicId = t.id;
+                        }
+                    }
+                });
+
+                let quizPassed = false;
+                const courseData = e.course as any;
+                if ((courseData.quizQuestionCount || 0) > 0) {
+                    const bestScore = bestQuizScores.get(e.course.id) || 0;
+                    if (bestScore >= (courseData.quizMinScore || 80)) {
+                        quizPassed = true;
+                    }
+                } else {
+                    quizPassed = true;
+                }
+
+                const { chapters, ...courseRest } = e.course;
+
+                complianceDocs.push({
+                    ...courseRest,
+                    assignedAt: e.assignedAt,
+                    completedAt: e.completedAt,
+                    signedAt: e.signedAt,
+                    isSigned: !!e.signedAt,
+                    progress: progressPct,
+                    allTopicsViewed: totalTopics > 0 && completedCount === totalTopics,
+                    quizPassed,
+                    lastActiveTopicId,
+                    expiresAt: e.expiresAt,
+                    _count: { chapters: chapters.length }
+                });
+            }
+        }
+
+        return { success: true, data: { myCourses, complianceDocs, recentCourses } };
+
+    } catch (error: any) {
+        console.error("getDashboardData Error:", error);
         return { success: false, error: error.message };
     }
 }
 
 export async function getMyCourses(userId: string) {
     try {
-        // If userId is missing, maybe default to "u1" for demo?
         const uid = userId || "u1";
 
-        // Check if user has ANY enrollments (Lazy Auto-Enroll for existing users)
-        const enrollmentCount = await prisma.enrollment.count({ where: { userId: uid } });
+        // Check enrollments
+        // const enrollmentCount = await prisma.enrollment.count({ where: { userId: uid } });
 
-        if (enrollmentCount === 0) {
-            console.log(`[getMyCourses] User ${uid} has 0 enrollments. Auto-enrolling in active courses...`);
-            const activeCourses = await prisma.course.findMany({ where: { isActive: true }, select: { id: true } });
-            if (activeCourses.length > 0) {
-                await prisma.enrollment.createMany({
-                    data: activeCourses.map(c => ({
-                        userId: uid,
-                        courseId: c.id,
-                        assignedAt: new Date()
-                    }))
-                });
-            }
-        }
+        // if (enrollmentCount === 0) {
+        //     console.log(`[getMyCourses] User ${uid} has 0 enrollments. Auto-enrolling in active courses...`);
+        //     const activeCourses = await prisma.course.findMany({ where: { isActive: true }, select: { id: true } });
+        //     if (activeCourses.length > 0) {
+        //         await prisma.enrollment.createMany({
+        //             data: activeCourses.map(c => ({
+        //                 userId: uid,
+        //                 courseId: c.id,
+        //                 assignedAt: new Date()
+        //             }))
+        //         });
+        //     }
+        // }
 
         const enrollments = await prisma.enrollment.findMany({
             where: { userId: uid },
@@ -55,30 +343,31 @@ export async function getMyCourses(userId: string) {
             }
         });
 
+        // Optimize: Fetch all progress for this user in one go
+        const allUserProgress = await prisma.userProgress.findMany({
+            where: { userId: uid, completed: true },
+            select: { topicId: true }
+        });
+        const completedTopicIds = new Set(allUserProgress.map(p => p.topicId));
+
         console.log(`[getMyCourses] User: ${uid}, Enrollments: ${enrollments.length}`);
 
-        const courses = await Promise.all(enrollments.map(async (e) => {
+        const courses = enrollments.map(e => {
             // Calculate Total Topics
             const totalTopics = e.course.chapters.reduce((acc, ch) => acc + ch.topics.length, 0);
 
-            // Calculate Completed Topics
+            // Calculate Completed Topics in-memory
             let progress = 0;
             if (totalTopics > 0) {
-                const topicIds = e.course.chapters.flatMap(ch => ch.topics.map(t => t.id));
-                const completedCount = await prisma.userProgress.count({
-                    where: {
-                        userId: uid,
-                        topicId: { in: topicIds },
-                        completed: true
-                    }
-                });
+                const courseTopicIds = e.course.chapters.flatMap(ch => ch.topics.map(t => t.id));
+                const completedCount = courseTopicIds.filter(tid => completedTopicIds.has(tid)).length;
                 progress = Math.round((completedCount / totalTopics) * 100);
             }
 
             return {
                 ...e.course,
                 totalTopics,
-                progress, // Now dynamically calculated
+                progress,
                 enrolledAt: e.assignedAt,
                 assignedAt: e.assignedAt,
                 expiresAt: e.expiresAt,
@@ -87,7 +376,7 @@ export async function getMyCourses(userId: string) {
                 lastActiveAt: e.lastActiveAt,
                 status: e.status
             };
-        }));
+        });
 
         const finalCourses = courses.filter(c => !c.isCompliance);
 
@@ -153,102 +442,144 @@ export async function getComplianceCourses(userId: string) {
     try {
         const uid = userId || "u1";
 
-        // Check if user has ANY enrollments (Lazy Auto-Enroll for existing users)
-        const enrollmentCount = await prisma.enrollment.count({ where: { userId: uid } });
-
-        if (enrollmentCount === 0) {
-            console.log(`[getComplianceCourses] User ${uid} has 0 enrollments. Auto-enrolling in active courses...`);
-            const activeCourses = await prisma.course.findMany({ where: { isActive: true }, select: { id: true } });
-            if (activeCourses.length > 0) {
-                await prisma.enrollment.createMany({
-                    data: activeCourses.map(c => ({
-                        userId: uid,
-                        courseId: c.id,
-                        assignedAt: new Date()
-                    }))
-                });
-            }
-        }
-
+        // 1. Fetch Enrollments with Course Structure (Chapters -> Topics)
+        // This avoids querying topics count per course later
         const enrollments = await prisma.enrollment.findMany({
             where: { userId: uid },
             include: {
                 course: {
                     include: {
-                        _count: { select: { chapters: true } }
+                        chapters: {
+                            include: {
+                                topics: { select: { id: true } }
+                            }
+                        }
                     }
                 }
             }
         });
 
-        console.log(`[getComplianceCourses] User: ${uid}, Raw Enrollments: ${enrollments.length}`);
+        // 2. Fetch ALL relevant UserProgress for these courses in one go
+        // Get all topic IDs involved involved in these courses
+        const allCourseTopicIds = enrollments.flatMap(e =>
+            e.course.chapters.flatMap(c => c.topics.map(t => t.id))
+        );
 
-        // Filter for compliance only and calculate progress
+        // Fetch progress for these topics
+        const userProgress = await prisma.userProgress.findMany({
+            where: {
+                userId: uid,
+                topicId: { in: allCourseTopicIds }
+            },
+            select: {
+                topicId: true,
+                completed: true,
+                lastAccessed: true
+            }
+        });
+
+        // Create a Set of completed topic IDs for O(1) lookup
+        const completedTopicIds = new Set(
+            userProgress.filter(p => p.completed).map(p => p.topicId)
+        );
+
+        // Map latest access time per topic to help find "last active"
+        // actually, we need to map topicId -> lastAccessed to find the latest
+        const progressMap = new Map();
+        userProgress.forEach(p => {
+            progressMap.set(p.topicId, p);
+        });
+
+        // 3. Fetch ALL Quiz Attempts for these courses
+        const courseIds = enrollments.map(e => e.course.id);
+        const quizAttempts = await prisma.quizAttempt.findMany({
+            where: {
+                userId: uid,
+                courseId: { in: courseIds }
+            },
+            select: {
+                courseId: true,
+                score: true
+            }
+        });
+
+        // Map courseId -> Best Score
+        const bestQuizScores = new Map<string, number>();
+        quizAttempts.forEach(qa => {
+            if (!qa.courseId) return;
+            const current = bestQuizScores.get(qa.courseId) || 0;
+            if (qa.score > current) {
+                bestQuizScores.set(qa.courseId, qa.score);
+            }
+        });
+
+        // 4. Process Logic In-Memory
         const complianceDocs = [];
 
         for (const e of enrollments) {
             if (!e.course.isCompliance) continue;
 
-            const totalTopics = await prisma.topic.count({
-                where: { chapter: { courseId: e.course.id } }
-            });
+            // Calculate Totals from included data
+            const allTopics = e.course.chapters.flatMap(c => c.topics);
+            const totalTopics = allTopics.length;
 
-            const completedTopics = await prisma.userProgress.count({
-                where: {
-                    userId: uid,
-                    topic: { chapter: { courseId: e.course.id } },
-                    completed: true
+            // Calculate Progress from fetched progress
+            const completedCount = allTopics.filter(t => completedTopicIds.has(t.id)).length;
+
+            const isSigned = !!e.signedAt;
+            const progress = totalTopics > 0 ? (completedCount / totalTopics) * 100 : 0;
+            const allTopicsViewed = totalTopics > 0 && completedCount === totalTopics;
+
+            // Find Last Active Topic
+            // We want the topic in this course with the most recent lastAccessed
+            let lastActiveTopicId = null;
+            let maxDate = 0;
+
+            allTopics.forEach(t => {
+                const p = progressMap.get(t.id);
+                if (p && p.lastAccessed) {
+                    const time = new Date(p.lastAccessed).getTime();
+                    if (time > maxDate) {
+                        maxDate = time;
+                        lastActiveTopicId = t.id;
+                    }
                 }
             });
 
-            // Is signed if signedAt is present OR (legacy fallback) all topics done
-            // Moving forward, we rely on signedAt for the explicit signature
-            // But we still track progress for the "Read All" enforcement
-            const isSigned = !!e.signedAt;
-            const progress = totalTopics > 0 ? (completedTopics / totalTopics) * 100 : 0;
-            const allTopicsViewed = totalTopics > 0 && completedTopics === totalTopics;
-
-            const lastProgress = await prisma.userProgress.findFirst({
-                where: {
-                    userId: uid,
-                    topic: { chapter: { courseId: e.course.id } }
-                },
-                orderBy: { lastAccessed: 'desc' },
-                select: { topicId: true }
-            });
-
-            // Check if Quiz Passed
+            // Check Quiz
             let quizPassed = false;
             const courseData = e.course as any;
             if ((courseData.quizQuestionCount || 0) > 0) {
-                const bestAttempt = await prisma.quizAttempt.findFirst({
-                    where: {
-                        userId: uid,
-                        courseId: e.course.id,
-                        score: { gte: courseData.quizMinScore || 80 }
-                    }
-                });
-                if (bestAttempt) quizPassed = true;
+                const bestScore = bestQuizScores.get(e.course.id) || 0;
+                if (bestScore >= (courseData.quizMinScore || 80)) {
+                    quizPassed = true;
+                }
             } else {
-                quizPassed = true; // No quiz needed
+                quizPassed = true;
             }
 
+            // Remove large included data from result to keep payload light
+            const { chapters, ...courseRest } = e.course;
+
             complianceDocs.push({
-                ...e.course,
+                ...courseRest,
                 assignedAt: e.assignedAt,
                 completedAt: e.completedAt,
-                signedAt: e.signedAt,
+                signedAt: e.signedAt, // Use the actual DB value
                 isSigned,
                 progress,
                 allTopicsViewed,
                 quizPassed,
-                lastActiveTopicId: lastProgress?.topicId || null,
-                expiresAt: e.expiresAt
+                lastActiveTopicId,
+                expiresAt: e.expiresAt,
+                _count: { chapters: chapters.length } // Restore expected count
             });
         }
 
+        console.log(`[getComplianceCourses] returning ${complianceDocs.length} docs`);
         return { success: true, data: complianceDocs };
     } catch (error: any) {
+        console.error("getComplianceCourses Error:", error);
         return { success: false, error: error.message };
     }
 }
@@ -262,14 +593,20 @@ export async function getRecentLearning(userId: string) {
             where: { userId: uid },
             orderBy: { lastAccessed: 'desc' },
             take: 50,
-            include: {
+            select: {
+                lastAccessed: true,
                 topic: {
-                    include: {
+                    select: {
                         chapter: {
-                            include: {
+                            select: {
                                 course: {
-                                    include: {
-                                        _count: { select: { chapters: true } }
+                                    select: {
+                                        id: true,
+                                        title: true,
+                                        description: true,
+                                        thumbnail: true,
+                                        category: true,
+                                        isCompliance: true,
                                     }
                                 }
                             }
@@ -422,6 +759,43 @@ export async function saveQuizAttempt(
         return { success: true, passed, minScore: course.quizMinScore || 80, attemptId: attempt.id };
     } catch (error: any) {
         console.error("Save Quiz Attempt Error:", error);
+        return { success: false, error: error.message };
+    }
+}
+
+export async function createAiCourse(data: any, userId: string) {
+    try {
+        const course = await prisma.course.create({
+            data: {
+                title: data.title,
+                description: data.description,
+                category: data.categoryName || "General",
+                subCategoryId: data.subCategoryId || undefined,
+                thumbnail: data.thumbnailUrl,
+                isActive: data.isActive,
+                isCompliance: data.isCompliance,
+                documentNumber: data.documentNumber,
+                quizQuestionCount: data.quizQuestionCount,
+                quizMinScore: data.quizMinScore,
+                authorId: userId,
+                chapters: {
+                    create: {
+                        title: "Overview",
+                        topics: {
+                            create: {
+                                title: "Full Content",
+                                content: data.aiContent,
+                                type: "text"
+                            }
+                        }
+                    }
+                }
+            }
+        });
+        revalidatePath('/admin/upload');
+        return { success: true, courseId: course.id };
+    } catch (error: any) {
+        console.error("Create AI Course Error:", error);
         return { success: false, error: error.message };
     }
 }

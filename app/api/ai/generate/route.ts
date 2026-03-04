@@ -1,43 +1,31 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { Groq } from 'groq-sdk';
 import { PrismaClient } from '@prisma/client';
-import { jwtVerify } from 'jose';
-
-const JWT_SECRET = new TextEncoder().encode(process.env.JWT_SECRET || 'default-secret-key-change-it');
+import { getGroqKeyForUser } from '@/lib/ai-config';
 
 export async function POST(req: NextRequest) {
     try {
+        console.log("---- [AI GENERATE] Request Started ----");
         const body = await req.json();
-        const { type, topicId, courseId, context, topicTitle, questionCount } = body; // context/topicTitle might be passed for ad-hoc requests
+        const { type, topicId, courseId, context, topicTitle, questionCount } = body;
+        console.log("---- [AI GENERATE] Body Parsed:", { type, topicId, courseId, hasContext: !!context });
 
-        const apiKey = process.env.GROQ_API_KEY;
+        // 0. Identify User & Fetch Company API Key using shared helper
+        const { apiKey, userId, userName } = await getGroqKeyForUser(req);
+
+        console.log("---- [AI GENERATE] Final API Key Decision:", {
+            exists: !!apiKey,
+            user: userName
+        });
+
         if (!apiKey) {
+            console.warn("---- [AI GENERATE] No API Key found");
             return NextResponse.json({ content: generateFallback(type, topicTitle || "Topic") });
         }
 
+        console.log("---- [AI GENERATE] Initializing Groq...");
         const groq = new Groq({ apiKey });
         const prisma = new PrismaClient();
-
-        // 0. Identify User (Optional for logging)
-        let userId = null;
-        let userName = "Guest";
-        try {
-            const token = req.cookies.get('auth-token')?.value;
-            if (token) {
-                const { payload } = await jwtVerify(token, JWT_SECRET);
-                userId = (payload.id || payload.userId) as string;
-
-                // Fetch name for snapshot
-                if (userId) {
-                    const u = await prisma.user.findUnique({ where: { id: userId }, select: { name: true } });
-                    if (u) userName = u.name || "Unknown";
-                }
-            }
-        } catch (e) {
-            console.warn("Token Logging: User identification failed", e);
-        }
-
-        // 1. Fetch Context from DB if topicId is provided
         let sourceText = context || "";
         let currentContent: any = {};
         let topic;

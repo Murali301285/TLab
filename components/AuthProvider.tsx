@@ -11,6 +11,11 @@ interface User {
     role: string;
     image?: string;
     companyId?: string;
+    company?: {
+        name: string;
+        shortName: string;
+    };
+    lastLogin?: string;
 }
 
 interface AuthContextType {
