@@ -364,9 +364,44 @@ model CoachMessage {
   timestamp DateTime @default(now())
 }
 
+model Mentor {
+  id           String   @id @default(cuid())
+  name         String
+  designation  String
+  photoUrl     String
+  organization String
+  email        String   @unique
+  bio          String   @db.Text
+  expertise    String[]
+  isTopMentor  Boolean  @default(false)
+  isActive     Boolean  @default(true)
+  
+  availabilities MentorAvailability[]
+  bookings       MentorBooking[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model MentorAvailability {
+  id            String    @id @default(cuid())
+  mentorId      String
+  mentor        Mentor    @relation(fields: [mentorId], references: [id], onDelete: Cascade)
+  type          String    // 'WEEKDAY', 'WEEKEND', 'SPECIFIC_DATE'
+  dayOfWeek     Int?      // 0 = Sunday, 1 = Monday, etc.
+  date          DateTime? // if 'SPECIFIC_DATE'
+  timeSlots     String[]  // ["09:00 AM", "10:00 AM"]
+  isRecursive   Boolean   @default(false)
+  recurrenceEnd DateTime?
+  
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
 model MentorBooking {
   id       String  @id @default(cuid())
   mentorId String 
+  mentor   Mentor  @relation(fields: [mentorId], references: [id])
   userId   String?
   user     User?   @relation(fields: [userId], references: [id])
 
@@ -377,6 +412,7 @@ model MentorBooking {
   userPhone String?
   topic     String?
   status    String  @default("CONFIRMED") 
+  meetingLink String?
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt

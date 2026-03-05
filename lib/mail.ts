@@ -10,7 +10,7 @@ const transporter = nodemailer.createTransport({
     },
 });
 
-export async function sendEmail(to: string, subject: string, html: string) {
+export async function sendEmail(to: string, subject: string, html: string, attachments?: any[]) {
     if (!process.env.SMTP_HOST || !process.env.SMTP_USER) {
         console.log('SMTP credentials not provided. Skipping email send.');
         console.log(`To: ${to}, Subject: ${subject}`);
@@ -25,6 +25,7 @@ export async function sendEmail(to: string, subject: string, html: string) {
             to,
             subject,
             html,
+            attachments
         });
         console.log(`Email sent: ${info.messageId}`);
     } catch (error) {

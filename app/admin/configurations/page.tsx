@@ -12,10 +12,11 @@ import TokenUsageStats from '@/components/admin/TokenUsageStats';
 import PlanMaster from '@/components/admin/PlanMaster';
 import CompanyMaster from '@/components/admin/CompanyMaster';
 import CurrencyMaster from '@/components/admin/CurrencyMaster';
+import MentorMaster from '@/components/admin/MentorMaster';
 import { useAuth } from '@/components/AuthProvider';
 import DashboardLoader from '@/components/DashboardLoader';
 
-type Tab = 'department' | 'category' | 'subcategory' | 'certificate' | 'token-usage' | 'plans' | 'companies' | 'currency';
+type Tab = 'department' | 'category' | 'subcategory' | 'certificate' | 'token-usage' | 'plans' | 'companies' | 'currency' | 'mentors';
 
 export default function ConfigurationPage() {
     const { user, isLoading } = useAuth();
@@ -29,6 +30,7 @@ export default function ConfigurationPage() {
             { id: 'plans', label: 'Plan Master', icon: Crown, roles: ['SUPER_ADMIN'] },
             { id: 'currency', label: 'Currency Master', icon: Globe, roles: ['SUPER_ADMIN'] },
             { id: 'department', label: 'Department Master', icon: Briefcase, roles: ['SUPER_ADMIN', 'COMPANY_ADMIN'] },
+            { id: 'mentors', label: 'Mentor Master', icon: Briefcase, roles: ['SUPER_ADMIN', 'COMPANY_ADMIN', 'HR'] },
             { id: 'category', label: 'Category Master', icon: Layers, roles: ['SUPER_ADMIN', 'COMPANY_ADMIN'] },
             { id: 'subcategory', label: 'Sub-Category Master', icon: BookOpen, roles: ['SUPER_ADMIN', 'COMPANY_ADMIN'] },
             { id: 'certificate', label: 'Certificate Master', icon: Award, roles: ['SUPER_ADMIN', 'COMPANY_ADMIN'] },
@@ -110,6 +112,7 @@ export default function ConfigurationPage() {
                                 {activeTab === 'plans' && menuItems.find(i => i.id === 'plans') && <PlanMaster />}
                                 {activeTab === 'currency' && menuItems.find(i => i.id === 'currency') && <CurrencyMaster />}
                                 {activeTab === 'department' && menuItems.find(i => i.id === 'department') && <DepartmentMaster />}
+                                {activeTab === 'mentors' && menuItems.find(i => i.id === 'mentors') && <MentorMaster />}
                                 {activeTab === 'category' && menuItems.find(i => i.id === 'category') && <CategoryMaster />}
                                 {activeTab === 'subcategory' && menuItems.find(i => i.id === 'subcategory') && <SubCategoryMaster />}
                                 {activeTab === 'certificate' && menuItems.find(i => i.id === 'certificate') && <CertificateMaster />}

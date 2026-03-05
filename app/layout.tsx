@@ -19,6 +19,7 @@ export const metadata: Metadata = {
 
 import { AuthProvider } from "@/components/AuthProvider";
 import { ToastProvider } from "@/components/ToastProvider";
+import { Toaster } from "sonner";
 
 import Image from "next/image";
 
@@ -47,6 +48,7 @@ export default function RootLayout({
         <AuthProvider>
           <ToastProvider>
             {children}
+            <Toaster position="top-right" richColors theme="light" />
           </ToastProvider>
         </AuthProvider>
         <footer className="py-6 text-center text-sm text-slate-400 bg-slate-50 border-t border-slate-100">

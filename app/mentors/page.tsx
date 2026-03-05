@@ -3,7 +3,7 @@
 import { useState, useEffect } from 'react';
 import Image from 'next/image';
 import Link from 'next/link';
-import { MENTORS, Mentor } from '@/data/mockData';
+import { Mentor } from '@/data/mockData';
 import {
     Search,
     Filter,
@@ -12,6 +12,7 @@ import {
     MessageSquare,
     Video,
     ChevronLeft,
+    ChevronRight,
     Briefcase,
     Award,
     X,
@@ -26,9 +27,44 @@ import { cn } from '@/lib/utils';
 import ProfileDropdown from '@/components/ProfileDropdown';
 import { useAuth } from '@/components/AuthProvider';
 
+const TIME_SLOTS = [
+    '06:00 AM', '07:00 AM', '08:00 AM', '09:00 AM', '10:00 AM', '11:00 AM',
+    '12:00 PM', '01:00 PM', '02:00 PM', '03:00 PM', '04:00 PM', '05:00 PM',
+    '06:00 PM', '07:00 PM', '08:00 PM', '09:00 PM', '10:00 PM', '11:00 PM', '12:00 AM'
+];
+
+function formatTimeSlotsAsRanges(slots: string[]): string[] {
+    if (!slots || slots.length === 0) return [];
+
+    const validSlots = slots.filter(s => TIME_SLOTS.includes(s))
+        .sort((a, b) => TIME_SLOTS.indexOf(a) - TIME_SLOTS.indexOf(b));
+
+    if (validSlots.length === 0) return slots;
+
+    const ranges: string[] = [];
+    let startIdx = TIME_SLOTS.indexOf(validSlots[0]);
+    let endIdx = startIdx;
+
+    for (let i = 1; i < validSlots.length; i++) {
+        const currentIdx = TIME_SLOTS.indexOf(validSlots[i]);
+        if (currentIdx === endIdx + 1) {
+            endIdx = currentIdx;
+        } else {
+            ranges.push(`${TIME_SLOTS[startIdx]} - ${TIME_SLOTS[endIdx + 1] || 'Late'}`);
+            startIdx = currentIdx;
+            endIdx = currentIdx;
+        }
+    }
+    ranges.push(`${TIME_SLOTS[startIdx]} - ${TIME_SLOTS[endIdx + 1] || 'Late'}`);
+
+    return ranges;
+}
+
 export default function MentorsPage() {
     const { user } = useAuth();
     const [searchTerm, setSearchTerm] = useState('');
+    const [mentorsList, setMentorsList] = useState<any[]>([]);
+    const [isLoadingMentors, setIsLoadingMentors] = useState(true);
 
     // UI States
     const [activeTab, setActiveTab] = useState<'browse' | 'bookings'>('browse');
@@ -64,12 +100,43 @@ export default function MentorsPage() {
     const [myBookings, setMyBookings] = useState<any[]>([]);
     const [isLoadingBookings, setIsLoadingBookings] = useState(false);
 
+    // Dynamic Availability States
+    const [availableDates, setAvailableDates] = useState<Date[]>([]);
+    const [timeSlots, setTimeSlots] = useState<{ slot: string, isBooked: boolean }[]>([]);
+    const [bookedSlotsForDate, setBookedSlotsForDate] = useState<string[]>([]);
+    const [isLoadingSlots, setIsLoadingSlots] = useState(false);
+
+    // Calendar View States
+    const [calendarView, setCalendarView] = useState<'week' | 'month'>('week');
+    const [calendarBaseDate, setCalendarBaseDate] = useState(new Date());
+
+    // Cancellation States
+    const [isCancelModalOpen, setIsCancelModalOpen] = useState(false);
+    const [cancellingBookingId, setCancellingBookingId] = useState<string | null>(null);
+    const [cancelReason, setCancelReason] = useState('');
+    const [isCancelling, setIsCancelling] = useState(false);
+
     // Sync user email when loaded
     useEffect(() => {
         if (user?.email) {
             setFormData(prev => ({ ...prev, email: user.email }));
         }
+        fetchMentorsList(); // Fetch public mentors list on load
     }, [user]);
+
+    const fetchMentorsList = async () => {
+        try {
+            const res = await fetch('/api/mentors');
+            const data = await res.json();
+            if (Array.isArray(data)) {
+                setMentorsList(data);
+            }
+        } catch (error) {
+            console.error('Failed to load mentors:', error);
+        } finally {
+            setIsLoadingMentors(false);
+        }
+    };
 
     // Fetch Bookings
     useEffect(() => {
@@ -90,6 +157,38 @@ export default function MentorsPage() {
             console.error(error);
         } finally {
             setIsLoadingBookings(false);
+        }
+    };
+
+    const handleOpenCancelModal = (bookingId: string) => {
+        setCancellingBookingId(bookingId);
+        setCancelReason('');
+        setIsCancelModalOpen(true);
+    };
+
+    const submitCancelBooking = async () => {
+        if (!cancellingBookingId) return;
+        setIsCancelling(true);
+        try {
+            const res = await fetch('/api/mentors/bookings/cancel', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ bookingId: cancellingBookingId, reason: cancelReason })
+            });
+            const data = await res.json();
+            if (data.success) {
+                setIsCancelModalOpen(false);
+                setCancellingBookingId(null);
+                setCancelReason('');
+                fetchBookings(); // Refresh bookings to show CANCELLED status
+            } else {
+                alert(data.error || 'Failed to cancel booking');
+            }
+        } catch (error) {
+            console.error(error);
+            alert('An error occurred while cancelling.');
+        } finally {
+            setIsCancelling(false);
         }
     };
 
@@ -167,48 +266,176 @@ export default function MentorsPage() {
         }
     };
 
-    const handleCancelBooking = async (bookingId: string) => {
-        if (!window.confirm("Are you sure you want to cancel this mentorship session? The mentor will be notified.")) {
-            return;
-        }
 
-        try {
-            const res = await fetch('/api/mentors/cancel', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ bookingId })
-            });
-            const data = await res.json();
-
-            if (res.ok && data.success) {
-                // Refresh bookings to reflect CANCELLED status
-                fetchBookings();
-            } else {
-                alert('Failed to cancel booking: ' + (data.error || 'Unknown error'));
-            }
-        } catch (e) {
-            console.error(e);
-            alert('A network error occurred while cancelling.');
-        }
-    };
-
-    const filteredMentors = MENTORS.filter(mentor => {
+    const filteredMentors = mentorsList.filter(mentor => {
         const matchesSearch = mentor.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-            mentor.role.toLowerCase().includes(searchTerm.toLowerCase());
+            (mentor.designation || mentor.role || '').toLowerCase().includes(searchTerm.toLowerCase());
         return matchesSearch;
     });
 
-    // Mock Calendar Dates (Next 14 days)
-    const availableDates = Array.from({ length: 14 }, (_, i) => {
-        const d = new Date();
-        d.setDate(d.getDate() + i + 1); // Start tomorrow
-        return d;
-    });
+    // Calendar Helper Functions
+    const getDaysInMonth = (year: number, month: number) => new Date(year, month + 1, 0).getDate();
+    const getFirstDayOfMonth = (year: number, month: number) => new Date(year, month, 1).getDay();
 
-    const timeSlots = [
-        "09:00 AM", "10:00 AM", "11:00 AM",
-        "02:00 PM", "03:00 PM", "04:00 PM", "05:00 PM"
-    ];
+    const checkIsDateAvailable = (dateToCheck: Date, availabilities: any[]) => {
+        if (!availabilities || availabilities.length === 0) return true; // Mock true if none set
+
+        const dayOfWeek = dateToCheck.getDay();
+        for (const avail of availabilities) {
+            if (avail.type === 'WEEKDAY' && dayOfWeek >= 1 && dayOfWeek <= 5) return true;
+            if (avail.type === 'WEEKEND' && (dayOfWeek === 0 || dayOfWeek === 6)) return true;
+            if (avail.type === 'SPECIFIC_DATE' && avail.date) {
+                if (new Date(avail.date).toDateString() === dateToCheck.toDateString()) return true;
+            }
+        }
+        return false;
+    };
+
+    const handleNextDateRange = () => {
+        const newDate = new Date(calendarBaseDate);
+        if (calendarView === 'week') {
+            newDate.setDate(newDate.getDate() + 7);
+        } else {
+            newDate.setMonth(newDate.getMonth() + 1);
+        }
+        setCalendarBaseDate(newDate);
+    };
+
+    const handlePrevDateRange = () => {
+        const newDate = new Date(calendarBaseDate);
+        if (calendarView === 'week') {
+            newDate.setDate(newDate.getDate() - 7);
+        } else {
+            newDate.setMonth(newDate.getMonth() - 1);
+        }
+        // Prevent going into the past
+        const today = new Date();
+        today.setHours(0, 0, 0, 0);
+        if (newDate < today && calendarView === 'week') {
+            setCalendarBaseDate(today);
+            return;
+        }
+        if (newDate.getFullYear() < today.getFullYear() || (newDate.getFullYear() === today.getFullYear() && newDate.getMonth() < today.getMonth())) {
+            setCalendarBaseDate(today);
+            return;
+        }
+        setCalendarBaseDate(newDate);
+    };
+
+    const generateCalendarDates = () => {
+        const dates: { date: Date, isAvailable: boolean, isPast: boolean }[] = [];
+        const today = new Date();
+        today.setHours(0, 0, 0, 0);
+
+        if (calendarView === 'week') {
+            // Find Sunday of the current week (or keep it starting from today if preferred)
+            // Sticking to standard Sunday start for week view
+            const startOfWeek = new Date(calendarBaseDate);
+            startOfWeek.setDate(startOfWeek.getDate() - startOfWeek.getDay());
+
+            for (let i = 0; i < 7; i++) {
+                const d = new Date(startOfWeek);
+                d.setDate(d.getDate() + i);
+                dates.push({
+                    date: d,
+                    isAvailable: activeMentor ? checkIsDateAvailable(d, activeMentor.availabilities) : true,
+                    isPast: d < today
+                });
+            }
+        } else {
+            // Month View
+            const year = calendarBaseDate.getFullYear();
+            const month = calendarBaseDate.getMonth();
+            const daysInMonth = getDaysInMonth(year, month);
+            const startingDay = getFirstDayOfMonth(year, month);
+
+            // Padding days from previous month (optional but visually better, just make them null)
+            for (let i = 0; i < startingDay; i++) {
+                dates.push({ date: new Date(year, month, -i), isAvailable: false, isPast: true }); // Dummy bad dates for padding
+            }
+
+            for (let i = 1; i <= daysInMonth; i++) {
+                const d = new Date(year, month, i);
+                dates.push({
+                    date: d,
+                    isAvailable: activeMentor ? checkIsDateAvailable(d, activeMentor.availabilities) : true,
+                    isPast: d < today
+                });
+            }
+        }
+        return dates;
+    };
+
+    const calendarGrid = generateCalendarDates();
+
+
+    // Fetch booked slots when a Date is selected
+    useEffect(() => {
+        if (!activeMentor || !selectedDate) return;
+
+        const fetchBookedSlots = async () => {
+            setIsLoadingSlots(true);
+            try {
+                // Adjust to local timezone for query to match server expectations
+                const tzOffset = selectedDate.getTimezoneOffset() * 60000;
+                const localISOTime = (new Date(selectedDate.getTime() - tzOffset)).toISOString().slice(0, -1);
+
+                const res = await fetch(`/api/mentors/${activeMentor.id}/bookings?date=${localISOTime}`);
+                const data = await res.json();
+                if (data.success) {
+                    const booked = data.data.map((b: any) => b.timeSlot);
+                    setBookedSlotsForDate(booked);
+                }
+            } catch (e) {
+                console.error("Failed to fetch booked slots", e);
+            } finally {
+                setIsLoadingSlots(false);
+            }
+        };
+
+        fetchBookedSlots();
+    }, [selectedDate, activeMentor]);
+
+    // Compute Time Slots for specific date
+    useEffect(() => {
+        if (!activeMentor || !selectedDate) {
+            setTimeSlots([]);
+            return;
+        }
+
+        if (!activeMentor.availabilities || activeMentor.availabilities.length === 0) {
+            // Fallback for mock mentors
+            const defaultSlots = ["09:00 AM", "10:00 AM", "11:00 AM", "02:00 PM", "03:00 PM", "04:00 PM"];
+            setTimeSlots(defaultSlots.map(slot => ({ slot, isBooked: bookedSlotsForDate.includes(slot) })));
+            return;
+        }
+
+        const dayOfWeek = selectedDate.getDay();
+        const combinedSlots = new Set<string>();
+
+        for (const avail of activeMentor.availabilities) {
+            let match = false;
+            if (avail.type === 'WEEKDAY' && dayOfWeek >= 1 && dayOfWeek <= 5) match = true;
+            if (avail.type === 'WEEKEND' && (dayOfWeek === 0 || dayOfWeek === 6)) match = true;
+            if (avail.type === 'SPECIFIC_DATE' && avail.date) {
+                const specificDate = new Date(avail.date);
+                if (specificDate.toDateString() === selectedDate.toDateString()) match = true;
+            }
+
+            if (match && avail.timeSlots) {
+                avail.timeSlots.forEach((s: string) => combinedSlots.add(s));
+            }
+        }
+
+        const sortedSlots = Array.from(combinedSlots).sort((a, b) => TIME_SLOTS.indexOf(a) - TIME_SLOTS.indexOf(b));
+
+        const computedTimeSlots = sortedSlots.map(slot => ({
+            slot,
+            isBooked: bookedSlotsForDate.includes(slot)
+        }));
+
+        setTimeSlots(computedTimeSlots);
+    }, [selectedDate, activeMentor, bookedSlotsForDate]);
 
     return (
         <div className="min-h-screen bg-slate-50 pb-20">
@@ -277,30 +504,28 @@ export default function MentorsPage() {
                                 <div key={mentor.id} className="bg-white rounded-2xl border border-slate-200 overflow-hidden hover:shadow-xl transition-shadow group">
                                     <div className="relative h-32 bg-gradient-to-r from-purple-600 to-indigo-600">
                                         <div className="absolute -bottom-12 left-6">
-                                            <div className="h-24 w-24 rounded-full border-4 border-white overflow-hidden bg-slate-200">
-                                                <img src={mentor.image} alt={mentor.name} className="h-full w-full object-cover" />
+                                            <div className="relative h-[120px] w-[120px] rounded-full border-4 border-white shadow-xl bg-white overflow-hidden shrink-0 mt-[-60px] mx-auto z-10">
+                                                <img src={mentor.photoUrl || mentor.image || '/murali.png'} alt="Mentor" className="h-full w-full object-cover rounded-full" />
                                             </div>
                                         </div>
                                     </div>
 
                                     <div className="pt-14 p-6">
-                                        <div className="flex justify-between items-start mb-2">
+                                        <div className="flex justify-between items-start mb-4">
                                             <div>
-                                                <h3 className="text-xl font-bold text-slate-900">{mentor.name}</h3>
-                                                <p className="text-purple-600 font-medium text-sm">{mentor.role}</p>
-                                                <p className="text-slate-500 text-xs flex items-center gap-1 mt-1">
-                                                    <Briefcase className="h-3 w-3" /> {mentor.company}
+                                                <h3 className="text-xl font-bold text-slate-900 group-hover:text-purple-700 transition-colors">
+                                                    {mentor.name}
+                                                </h3>
+                                                <p className="text-sm font-medium text-purple-600 mb-1">{mentor.designation || mentor.role}</p>
+                                                <p className="text-xs text-slate-500 flex items-center gap-1 mb-1">
+                                                    <Briefcase className="h-3.5 w-3.5" /> {mentor.organization || mentor.company}
                                                 </p>
                                                 {mentor.email && (
-                                                    <p className="text-slate-500 text-xs flex items-center gap-1 mt-1">
-                                                        <Mail className="h-3 w-3" />
-                                                        <a href={`mailto:${mentor.email}`} className="hover:text-purple-600 hover:underline">{mentor.email}</a>
+                                                    <p className="text-xs text-slate-500 flex items-center gap-1 hover:text-purple-600 transition-colors">
+                                                        <Mail className="h-3.5 w-3.5" />
+                                                        <a href={`mailto:${mentor.email}`}>{mentor.email}</a>
                                                     </p>
                                                 )}
-                                            </div>
-                                            <div className="flex items-center gap-1 bg-yellow-50 px-2 py-1 rounded-lg border border-yellow-100">
-                                                <Star className="h-4 w-4 text-yellow-500 fill-yellow-500" />
-                                                <span className="text-sm font-bold text-yellow-700">{mentor.rating}</span>
                                             </div>
                                         </div>
 
@@ -309,22 +534,47 @@ export default function MentorsPage() {
                                         </p>
 
                                         <div className="flex flex-wrap gap-2 mb-6">
-                                            {mentor.expertise.map((exp, i) => (
+                                            {mentor.expertise?.map((exp: string, i: number) => (
                                                 <span key={i} className="px-2 py-1 bg-slate-100 text-slate-600 text-xs rounded-md font-medium">
                                                     {exp}
                                                 </span>
                                             ))}
                                         </div>
 
-                                        <div className="flex items-center gap-4 text-xs text-slate-500 mb-6 py-3 border-t border-b border-slate-100">
-                                            <div className="flex items-center gap-1.5">
-                                                <Calendar className="h-4 w-4 text-slate-400" />
-                                                {mentor.availability}
+                                        <div className="flex items-start gap-4 text-xs text-slate-500 mb-6 py-3 border-t border-b border-slate-100 min-h-[50px]">
+                                            <div className="flex flex-col gap-2 flex-1">
+                                                <div className="flex items-center gap-1.5 font-bold text-slate-700">
+                                                    <Calendar className="h-4 w-4 text-slate-400" />
+                                                    Schedule Available
+                                                </div>
+                                                <div className="flex flex-col gap-1 pl-5">
+                                                    {(() => {
+                                                        const allSlots = new Set<string>();
+                                                        mentor.availabilities?.forEach((a: any) => {
+                                                            a.timeSlots?.forEach((s: string) => allSlots.add(s));
+                                                        });
+                                                        const slotsArray = Array.from(allSlots);
+
+                                                        if (slotsArray.length === 0) {
+                                                            return <span className="text-slate-400 italic">No specific times set</span>;
+                                                        }
+
+                                                        const ranges = formatTimeSlotsAsRanges(slotsArray);
+                                                        return ranges.slice(0, 3).map((range, i) => (
+                                                            <div key={i} className="flex flex-wrap items-center gap-1.5">
+                                                                <Clock className="w-3 h-3 text-purple-400" />
+                                                                <span className="text-purple-700 bg-purple-50 px-1.5 rounded">{range}</span>
+                                                            </div>
+                                                        )).concat(ranges.length > 3 ? [<div key="more" className="text-[10px] text-slate-400 ml-5 pt-1">+{ranges.length - 3} more block(s)</div>] : [] as any);
+                                                    })()}
+                                                </div>
                                             </div>
-                                            <div className="flex items-center gap-1.5">
-                                                <Award className="h-4 w-4 text-slate-400" />
-                                                Top Mentor
-                                            </div>
+                                            {mentor.isTopMentor && (
+                                                <div className="flex items-center gap-1.5 shrink-0 bg-amber-50 text-amber-700 px-2 py-1 rounded-md mt-0.5">
+                                                    <Award className="h-4 w-4" />
+                                                    Top
+                                                </div>
+                                            )}
                                         </div>
 
                                         <div className="flex gap-3">
@@ -408,7 +658,7 @@ export default function MentorsPage() {
                             </div>
                         ) : (
                             myBookings.filter((booking: any) => {
-                                const mentor = MENTORS.find(m => m.id === booking.mentorId) || MENTORS[0];
+                                const mentor = mentorsList.find(m => m.id === booking.mentorId) || mentorsList[0] || { name: 'Unknown Mentor' };
 
                                 // Text Search
                                 const matchesSearch = mentor.name.toLowerCase().includes(bookingSearch.toLowerCase());
@@ -441,7 +691,7 @@ export default function MentorsPage() {
                                 </div>
                             ) : (
                                 myBookings.filter((booking: any) => {
-                                    const mentor = MENTORS.find(m => m.id === booking.mentorId) || MENTORS[0];
+                                    const mentor = mentorsList.find(m => m.id === booking.mentorId) || mentorsList[0] || { name: 'Unknown Mentor' };
                                     const matchesSearch = mentor.name.toLowerCase().includes(bookingSearch.toLowerCase());
                                     const matchesStatus = bookingStatus === 'All' || booking.status === bookingStatus;
                                     const bDate = new Date(booking.date);
@@ -462,11 +712,11 @@ export default function MentorsPage() {
                                     return matchesSearch && matchesStatus && matchesFrom && matchesTo;
                                 }).map((booking: any) => {
                                     // Find mentor (mock lookup)
-                                    const mentor = MENTORS.find(m => m.id === booking.mentorId) || MENTORS[0];
+                                    const mentor = mentorsList.find(m => m.id === booking.mentorId) || mentorsList[0] || { name: 'Unknown Mentor', photoUrl: '/murali.png' };
                                     return (
                                         <div key={booking.id} className="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm flex flex-col md:flex-row gap-6 items-center">
-                                            <div className="relative h-20 w-20 rounded-full overflow-hidden shrink-0">
-                                                <img src={mentor.image} alt="Mentor" className="h-full w-full object-cover" />
+                                            <div className="relative h-20 w-20 rounded-full overflow-hidden shrink-0 bg-slate-100">
+                                                <img src={mentor.photoUrl || mentor.image} alt="Mentor" className="h-full w-full object-cover" />
                                             </div>
                                             <div className="flex-1 text-center md:text-left">
                                                 <h3 className="font-bold text-lg text-slate-900">{mentor.name}</h3>
@@ -494,9 +744,20 @@ export default function MentorsPage() {
                                                 <div className="flex flex-col gap-2 items-end">
                                                     {booking.status !== 'CANCELLED' && (
                                                         <>
-                                                            <button className="text-sm text-purple-600 font-bold hover:underline">View Link</button>
+                                                            {booking.meetingLink ? (
+                                                                <a
+                                                                    href={booking.meetingLink}
+                                                                    target="_blank"
+                                                                    rel="noopener noreferrer"
+                                                                    className="text-sm text-purple-600 font-bold hover:underline mb-2"
+                                                                >
+                                                                    Join Video Session
+                                                                </a>
+                                                            ) : (
+                                                                <button disabled className="text-sm text-slate-300 font-bold mb-2 cursor-not-allowed">No Link</button>
+                                                            )}
                                                             <button
-                                                                onClick={() => handleCancelBooking(booking.id)}
+                                                                onClick={() => handleOpenCancelModal(booking.id)}
                                                                 className="text-xs text-slate-400 hover:text-red-500 hover:underline transition-colors"
                                                             >
                                                                 Cancel Session
@@ -561,6 +822,46 @@ export default function MentorsPage() {
                 </div>
             )}
 
+            {/* Cancel Booking Modal */}
+            {isCancelModalOpen && (
+                <div className="fixed inset-0 bg-slate-900/50 backdrop-blur-sm z-[80] flex items-center justify-center p-4">
+                    <div className="bg-white w-full max-w-md rounded-2xl shadow-2xl overflow-hidden animate-in fade-in zoom-in-95 duration-200">
+                        <div className="p-4 border-b border-slate-100 flex items-center justify-between bg-red-50">
+                            <h3 className="font-bold text-lg text-red-700 flex items-center gap-2">
+                                <Calendar className="h-5 w-5" /> Cancel Session
+                            </h3>
+                            <button onClick={() => setIsCancelModalOpen(false)}><X className="h-5 w-5 text-red-400 hover:text-red-700" /></button>
+                        </div>
+                        <div className="p-6">
+                            <p className="text-slate-600 text-sm mb-4">Please provide a reason for cancelling this session. This will be shared with the mentor.</p>
+                            <textarea
+                                value={cancelReason}
+                                onChange={(e) => setCancelReason(e.target.value)}
+                                placeholder="E.g., Unexpected conflict, will reschedule later."
+                                className="w-full border border-slate-200 rounded-xl p-3 text-sm focus:outline-none focus:ring-2 focus:ring-red-500 min-h-[100px] mb-6"
+                            ></textarea>
+
+                            <div className="flex items-center justify-end gap-3">
+                                <button
+                                    onClick={() => setIsCancelModalOpen(false)}
+                                    className="px-4 py-2 text-sm font-bold text-slate-500 hover:bg-slate-100 rounded-xl transition-colors"
+                                >
+                                    Go Back
+                                </button>
+                                <button
+                                    onClick={submitCancelBooking}
+                                    disabled={isCancelling}
+                                    className="px-6 py-2 text-sm font-bold bg-red-600 text-white hover:bg-red-700 rounded-xl transition-colors disabled:opacity-50 flex items-center gap-2"
+                                >
+                                    {isCancelling ? <Loader2 className="h-4 w-4 animate-spin" /> : null}
+                                    Confirm Cancel
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            )}
+
             {/* Booking Modal */}
             {showBookingModal && activeMentor && (
                 <div className="fixed inset-0 bg-slate-900/50 backdrop-blur-sm z-[70] flex items-center justify-center p-4">
@@ -586,24 +887,76 @@ export default function MentorsPage() {
 
                             {bookingStep === 1 && (
                                 <div className="space-y-4">
-                                    <h4 className="font-bold text-slate-900 text-center">Select a Date</h4>
-                                    <div className="grid grid-cols-4 gap-2">
-                                        {availableDates.map((date, i) => (
+                                    <div className="flex items-center justify-between mb-4">
+                                        <h4 className="font-bold text-slate-900">Select a Date</h4>
+                                        <div className="bg-slate-100 p-1 rounded-lg flex text-xs font-medium">
                                             <button
-                                                key={i}
-                                                onClick={() => { setSelectedDate(date); setBookingStep(2); }}
-                                                className={cn(
-                                                    "p-3 rounded-xl border text-sm font-medium transition-all hover:border-purple-300 hover:bg-purple-50",
-                                                    selectedDate?.toDateString() === date.toDateString()
-                                                        ? "bg-purple-600 text-white border-purple-600 hover:bg-purple-600 hover:border-purple-600"
-                                                        : "bg-white border-slate-200 text-slate-600"
-                                                )}
+                                                onClick={() => { setCalendarView('week'); setCalendarBaseDate(new Date()); }}
+                                                className={cn("px-3 py-1.5 rounded-md transition-all", calendarView === 'week' ? "bg-white shadow-sm text-purple-700" : "text-slate-500 hover:text-slate-700")}
                                             >
-                                                <div className="text-xs opacity-70 mb-1">{date.toLocaleDateString('en-US', { weekday: 'short' })}</div>
-                                                <div className="text-lg font-bold">{date.getDate()}</div>
+                                                Week
                                             </button>
-                                        ))}
+                                            <button
+                                                onClick={() => { setCalendarView('month'); setCalendarBaseDate(new Date()); }}
+                                                className={cn("px-3 py-1.5 rounded-md transition-all", calendarView === 'month' ? "bg-white shadow-sm text-purple-700" : "text-slate-500 hover:text-slate-700")}
+                                            >
+                                                Month
+                                            </button>
+                                        </div>
                                     </div>
+
+                                    <div className="bg-white border text-sm border-slate-200 p-4 rounded-xl">
+                                        <div className="flex items-center justify-between mb-4">
+                                            <button onClick={handlePrevDateRange} className="p-1.5 hover:bg-slate-100 rounded-lg transition-colors"><ChevronLeft className="h-5 w-5 text-slate-600" /></button>
+                                            <div className="font-bold text-slate-800">
+                                                {calendarView === 'week'
+                                                    ? `Week of ${calendarGrid[0]?.date.toLocaleDateString(undefined, { month: 'short', day: 'numeric' })}`
+                                                    : calendarBaseDate.toLocaleDateString(undefined, { month: 'long', year: 'numeric' })
+                                                }
+                                            </div>
+                                            <button onClick={handleNextDateRange} className="p-1.5 hover:bg-slate-100 rounded-lg transition-colors"><ChevronRight className="h-5 w-5 text-slate-600" /></button>
+                                        </div>
+
+                                        <div className="grid grid-cols-7 gap-1 mb-2 text-center text-xs font-bold text-slate-400">
+                                            <div>Sun</div><div>Mon</div><div>Tue</div><div>Wed</div><div>Thu</div><div>Fri</div><div>Sat</div>
+                                        </div>
+
+                                        <div className={cn("grid grid-cols-7 gap-1", calendarView === 'month' ? "gap-y-2" : "")}>
+                                            {calendarGrid.map((dt, i) => {
+                                                // Handle invisible padding days in month view
+                                                if (calendarView === 'month' && dt.date.getMonth() !== calendarBaseDate.getMonth()) {
+                                                    return <div key={`pad-${i}`} className="p-2"></div>;
+                                                }
+
+                                                const isSelected = selectedDate?.toDateString() === dt.date.toDateString();
+                                                const canSelect = !dt.isPast && dt.isAvailable;
+
+                                                return (
+                                                    <button
+                                                        key={i}
+                                                        disabled={!canSelect}
+                                                        onClick={() => { setSelectedDate(dt.date); setBookingStep(2); }}
+                                                        className={cn(
+                                                            "aspect-square p-1 rounded-lg flex flex-col items-center justify-center transition-all relative border border-transparent",
+                                                            isSelected ? "bg-purple-600 text-white shadow-md relative z-10" : "",
+                                                            !isSelected && canSelect ? "hover:border-purple-200 hover:bg-purple-50 text-slate-700" : "",
+                                                            !canSelect ? "text-slate-300 cursor-not-allowed opacity-50" : ""
+                                                        )}
+                                                    >
+                                                        <span className={cn("text-lg", isSelected ? "font-bold" : "")}>{dt.date.getDate()}</span>
+
+                                                        {canSelect && !isSelected && (
+                                                            <div className="w-1.5 h-1.5 bg-green-400 rounded-full mt-0.5 shadow-sm"></div>
+                                                        )}
+                                                        {!canSelect && !dt.isPast && (
+                                                            <div className="w-1.5 h-1.5 bg-slate-200 rounded-full mt-0.5"></div>
+                                                        )}
+                                                    </button>
+                                                )
+                                            })}
+                                        </div>
+                                    </div>
+
                                 </div>
                             )}
 
@@ -615,22 +968,47 @@ export default function MentorsPage() {
                                         <span className="font-bold text-slate-900">{selectedDate?.toLocaleDateString()}</span>
                                     </div>
                                     <h4 className="font-bold text-slate-900 text-center">Select Time Slot</h4>
-                                    <div className="grid grid-cols-3 gap-3">
-                                        {timeSlots.map((slot) => (
-                                            <button
-                                                key={slot}
-                                                onClick={() => { setSelectedTimeSlot(slot); setBookingStep(3); }}
-                                                className={cn(
-                                                    "p-3 rounded-xl border text-sm font-bold transition-all hover:border-purple-300 hover:bg-purple-50",
-                                                    selectedTimeSlot === slot
-                                                        ? "bg-purple-600 text-white border-purple-600 hover:bg-purple-600 hover:border-purple-600 shadow-md"
-                                                        : "bg-white border-slate-200 text-slate-600"
-                                                )}
-                                            >
-                                                {slot}
-                                            </button>
-                                        ))}
-                                    </div>
+                                    {isLoadingSlots ? (
+                                        <div className="flex justify-center p-8"><Loader2 className="h-6 w-6 animate-spin text-purple-600" /></div>
+                                    ) : timeSlots.length === 0 ? (
+                                        <div className="text-center text-slate-500 text-sm py-8 bg-slate-50 rounded-xl border border-slate-100">No time slots configured for this date.</div>
+                                    ) : (
+                                        <div className="grid grid-cols-3 gap-3">
+                                            {timeSlots.map(({ slot, isBooked }) => (
+                                                <button
+                                                    key={slot}
+                                                    disabled={isBooked}
+                                                    onClick={() => { setSelectedTimeSlot(slot); setBookingStep(3); }}
+                                                    className={cn(
+                                                        "p-3 rounded-xl border text-sm font-bold transition-all relative overflow-hidden",
+                                                        isBooked
+                                                            ? "bg-slate-50 border-slate-200 text-slate-400 cursor-not-allowed"
+                                                            : selectedTimeSlot === slot
+                                                                ? "bg-purple-600 text-white border-purple-600 shadow-md"
+                                                                : "bg-white border-slate-200 text-slate-600 hover:border-purple-300 hover:bg-purple-50"
+                                                    )}
+                                                >
+                                                    <div>
+                                                        {slot} - {
+                                                            (() => {
+                                                                const idx = TIME_SLOTS.indexOf(slot);
+                                                                if (idx !== -1 && idx < TIME_SLOTS.length - 1) {
+                                                                    return TIME_SLOTS[idx + 1];
+                                                                }
+                                                                // Fallback for last slot
+                                                                const t = new Date(`2000-01-01 ${slot}`);
+                                                                t.setHours(t.getHours() + 1);
+                                                                return t.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+                                                            })()
+                                                        }
+                                                    </div>
+                                                    {isBooked && (
+                                                        <div className="text-[10px] font-normal uppercase tracking-wider text-slate-400 mt-0.5">(Booked)</div>
+                                                    )}
+                                                </button>
+                                            ))}
+                                        </div>
+                                    )}
                                 </div>
                             )}
 
